@@ -46,6 +46,10 @@ function structure_import_xlsx(string $tmpPath): array {
     $demo = _struct_read_sheet($ss->getSheetByName('DEMO-vragen'),       ['block','sort_order','text']);
 
     $validTypes = ['functional','non_functional','other'];
+    // De applicatie heeft vaste top-level categorie-codes waaraan scoring,
+    // wizard-stappen, Excel-exports en rapportage vasthangen. Eigen codes
+    // zouden orphan-requirements opleveren — afkeuren bij import.
+    $allowedCatCodes = ['FUNC','NFR','VEND','LIC','SUP'];
     $catByCode = [];
     foreach ($cats as $i => $r) {
         $code = trim((string)$r['code']);
@@ -54,6 +58,13 @@ function structure_import_xlsx(string $tmpPath): array {
         if ($code === '' || $name === '' || $type === '') {
             throw new RuntimeException('Categorieen rij ' . ($i + 2) . ': code, name en type zijn verplicht.');
         }
+        if (!in_array($code, $allowedCatCodes, true)) {
+            throw new RuntimeException(
+                'Categorieen rij ' . ($i + 2) . ": code '$code' is niet toegestaan. "
+                . 'Toegestane codes: ' . implode(', ', $allowedCatCodes)
+                . '. Naam en sort_order mag je vrij kiezen, de code zelf niet.'
+            );
+        }
         if (!in_array($type, $validTypes, true)) {
             throw new RuntimeException('Categorieen rij ' . ($i + 2) . ": type '$type' ongeldig (functional/non_functional/other).");
         }
@@ -61,6 +72,13 @@ function structure_import_xlsx(string $tmpPath): array {
             throw new RuntimeException("Categorieen: dubbele code '$code'.");
         }
         $catByCode[$code] = true;
+    }
+    $missing = array_diff($allowedCatCodes, array_keys($catByCode));
+    if ($missing) {
+        throw new RuntimeException(
+            'Categorieen: alle vijf vaste codes zijn verplicht. Ontbreekt: '
+            . implode(', ', $missing) . '.'
+        );
     }
 
     $appByLabel = [];
