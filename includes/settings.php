@@ -13,6 +13,7 @@ const SETTING_DEFAULTS = [
     'app_name'       => 'Selectie Tool',
     'company_name'   => '',
     'logo_path'      => '',
+    'favicon_path'   => '',
     // Mail — wordt in Fase 2 via de UI ingevuld.
     'mail_driver'    => 'log',
     'mail_from'      => '',
@@ -75,4 +76,22 @@ function setting_logo_url(): string {
     $p = setting_get('logo_path');
     if ($p === '') return '';
     return APP_BASE_URL . '/' . ltrim($p, '/');
+}
+
+function setting_favicon_url(): string {
+    $p = setting_get('favicon_path');
+    if ($p === '') return '';
+    return APP_BASE_URL . '/' . ltrim($p, '/');
+}
+
+/** MIME-type based on stored favicon extension (for <link type="..."/>). */
+function setting_favicon_mime(): string {
+    $p = setting_get('favicon_path');
+    if ($p === '') return '';
+    $ext = strtolower(pathinfo($p, PATHINFO_EXTENSION));
+    return [
+        'ico'  => 'image/x-icon',
+        'png'  => 'image/png',
+        'svg'  => 'image/svg+xml',
+    ][$ext] ?? '';
 }

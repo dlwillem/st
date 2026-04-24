@@ -141,6 +141,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setting_set('logo_path', '');
             audit_log('settings.logo_remove', 'settings', 0, '');
             flash_set('success', 'Logo verwijderd.');
+        } elseif ($action === 'branding_favicon_upload') {
+            if (empty($_FILES['favicon']) || ($_FILES['favicon']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                throw new RuntimeException('Geen bestand ontvangen of upload-fout.');
+            }
+            $f = $_FILES['favicon'];
+            if ((int)$f['size'] > 128 * 1024) throw new RuntimeException('Favicon mag max 128 KB zijn.');
+            $allowed = [
+                'image/x-icon'          => 'ico',
+                'image/vnd.microsoft.icon' => 'ico',
+                'image/png'             => 'png',
+                'image/svg+xml'         => 'svg',
+            ];
+            $mime = (new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']) ?: '';
+            if (!isset($allowed[$mime])) throw new RuntimeException('Alleen ICO, PNG of SVG toegestaan.');
+            $ext = $allowed[$mime];
+            $dir = APP_ROOT . '/uploads/branding';
+            if (!is_dir($dir) && !mkdir($dir, 0775, true)) {
+                throw new RuntimeException('Kon upload-map niet aanmaken.');
+            }
+            $name = 'favicon_' . bin2hex(random_bytes(8)) . '.' . $ext;
+            $dest = $dir . '/' . $name;
+            if (!move_uploaded_file($f['tmp_name'], $dest)) {
+                throw new RuntimeException('Upload mislukt.');
+            }
+            // Verwijder eventueel vorige favicon
+            $prev = setting_get('favicon_path');
+            if ($prev !== '' && str_starts_with($prev, 'uploads/branding/')) {
+                $prevAbs = APP_ROOT . '/' . $prev;
+                if (is_file($prevAbs)) @unlink($prevAbs);
+            }
+            setting_set('favicon_path', 'uploads/branding/' . $name);
+            audit_log('settings.favicon_upload', 'settings', 0, $name);
+            flash_set('success', 'Favicon geüpload.');
+        } elseif ($action === 'branding_favicon_remove') {
+            $prev = setting_get('favicon_path');
+            if ($prev !== '' && str_starts_with($prev, 'uploads/branding/')) {
+                $prevAbs = APP_ROOT . '/' . $prev;
+                if (is_file($prevAbs)) @unlink($prevAbs);
+            }
+            setting_set('favicon_path', '');
+            audit_log('settings.favicon_remove', 'settings', 0, '');
+            flash_set('success', 'Favicon verwijderd.');
         }
     } catch (Throwable $e) {
         flash_set('error', $e->getMessage());
@@ -170,7 +212,8 @@ $bodyRenderer = function () use ($users, $q, $role, $activeFilter) { ?>
   <?php
     $bAppName = setting_get('app_name');
     $bCompany = setting_get('company_name');
-    $bLogoUrl = setting_logo_url();
+    $bLogoUrl    = setting_logo_url();
+    $bFaviconUrl = setting_favicon_url();
   ?>
   <div class="card" style="margin-bottom:24px;">
     <div class="card-title">
@@ -226,6 +269,41 @@ $bodyRenderer = function () use ($users, $q, $role, $activeFilter) { ?>
           <form id="logo-remove-form" method="post" style="display:none;">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="branding_logo_remove">
+          </form>
+        <?php endif; ?>
+      </div>
+
+      <div style="flex:0 0 220px;">
+        <div class="muted small" style="margin-bottom:6px;font-weight:600;">Favicon</div>
+        <div style="border:1px dashed var(--border,#e5e7eb);border-radius:10px;padding:18px;display:flex;align-items:center;justify-content:center;min-height:120px;background:#f9fafb;">
+          <?php if ($bFaviconUrl !== ''): ?>
+            <img src="<?= h($bFaviconUrl) ?>" alt="Huidige favicon" style="width:48px;height:48px;object-fit:contain;">
+          <?php else: ?>
+            <span class="muted small">Nog geen favicon</span>
+          <?php endif; ?>
+        </div>
+        <form method="post" enctype="multipart/form-data" style="margin-top:10px;">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="branding_favicon_upload">
+          <label class="field" style="margin-bottom:6px;">
+            <input class="input" type="file" name="favicon"
+                   accept=".ico,.png,.svg,image/x-icon,image/png,image/svg+xml" required>
+          </label>
+          <div class="row-sm" style="gap:6px;">
+            <button type="submit" class="btn sm"><?= icon('upload', 12) ?> Uploaden</button>
+            <?php if ($bFaviconUrl !== ''): ?>
+              <button type="submit" form="favicon-remove-form" class="btn sm ghost"
+                      onclick="return confirm('Favicon verwijderen?');">
+                <?= icon('trash', 12) ?> Verwijderen
+              </button>
+            <?php endif; ?>
+          </div>
+          <p class="muted small" style="margin:6px 0 0;">ICO, PNG of SVG. Max 128 KB. Vierkant (32×32 of 64×64) werkt het best.</p>
+        </form>
+        <?php if ($bFaviconUrl !== ''): ?>
+          <form id="favicon-remove-form" method="post" style="display:none;">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="branding_favicon_remove">
           </form>
         <?php endif; ?>
       </div>

@@ -11,8 +11,11 @@ $flashes = flash_pull();
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="csrf-token" content="<?= h(csrf_token()) ?>">
-  <?php $_appName = setting_app_name(); $_logoUrl = setting_logo_url(); ?>
+  <?php $_appName = setting_app_name(); $_logoUrl = setting_logo_url(); $_favUrl = setting_favicon_url(); $_favMime = setting_favicon_mime(); ?>
   <title><?= h($pageTitle ?? $_appName) ?> — <?= h($_appName) ?></title>
+  <?php if ($_favUrl !== ''): ?>
+    <link rel="icon" <?= $_favMime !== '' ? 'type="' . h($_favMime) . '"' : '' ?> href="<?= h($_favUrl) ?>?v=<?= @filemtime(APP_ROOT . '/' . setting_get('favicon_path')) ?>">
+  <?php endif; ?>
   <link rel="stylesheet" href="<?= h(APP_BASE_URL) ?>/public/assets/css/style.css?v=<?= h(APP_VERSION) ?>-<?= @filemtime(APP_ROOT . '/public/assets/css/style.css') ?>">
 </head>
 <body class="auth">
