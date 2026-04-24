@@ -1,4 +1,4 @@
-# SelectieTool
+# Selectie Tool
 
 Webapplicatie voor gestructureerde softwareselectie: requirements, scoring door
 meerdere deelnemers, weging, leveranciers-invulportaal en rapportage.
@@ -14,19 +14,15 @@ meerdere deelnemers, weging, leveranciers-invulportaal en rapportage.
 
 ## Installatie
 
-1. **Upload de codebase** naar de webroot van je hoster (inclusief `vendor/`).
-2. **Composer** — alleen nodig als `vendor/` **niet** is meegeleverd (bv. bij
-   `git clone` zonder vendor). Release-zip bevat `vendor/` al, sla dan over:
-   ```bash
-   composer install --no-dev --optimize-autoloader
-   ```
-3. **Open de install-wizard** in je browser:
+1. **Upload de codebase** naar de webroot van je hoster (inclusief `vendor/`,
+   of draai daarna `composer install --no-dev --optimize-autoloader`).
+2. **Open de install-wizard** in je browser:
    ```
    https://jouw-domein.tld/install.php
    ```
    De wizard maakt zelf `.env` aan als die nog ontbreekt en doorloopt zes
    stappen: DB-verbinding → schema → admin-account → branding → mail → klaar.
-4. **Na succes: verwijder `install.php` én de map `sql/` van je host.** Ook
+3. **Na succes: verwijder `install.php` én de map `sql/` van je host.** Ook
    als je het vergeet gaat de wizard automatisch op slot (via
    `settings.installed_at` + aanwezigheid van admin), maar verwijderen is de
    veilige default.
@@ -47,7 +43,7 @@ worden ingevoerd.
 - **Structuur laden**: Instellingen → Structuur → upload een ingevulde template,
   of download het lege template en vul zelf categorieën, subcategorieën,
   applicatiesoorten en DEMO-vragen aan.
-- **Branding**: Instellingen → Branding (app-naam, bedrijfsnaam, logo).
+- **Branding**: Instellingen → Branding (app-naam, bedrijfsnaam, logo, favicon).
 - **Mail**: Instellingen → Mail-configuratie (driver `log` of `smtp` + testmail).
 
 ## Health-endpoint
@@ -62,7 +58,7 @@ Back up regelmatig:
 - **Database** (`mysqldump` of hoster-paneel)
 - **`.env`** — bevat `APP_KEY`; zonder deze sleutel is het mail-wachtwoord
   onleesbaar
-- **`uploads/`** — geüpload logo + leveranciersbijlagen
+- **`uploads/`** — logo, favicon en leveranciersbijlagen
 
 ## Logs
 
@@ -81,7 +77,7 @@ Out-of-the-box ingebouwd:
 - PDO-prepared statements (strict mode, geen emulation)
 - Bcrypt-wachtwoorden; scoring-tokens opgeslagen als SHA-256 hash
 - Gevoelige mappen geblokkeerd via `.htaccess` (`config`, `includes`, `logs`,
-  `sql`, `vendor`, `docs`)
+  `sql`, `vendor`, `docs`, `data`)
 - Mail-wachtwoord AES-256-GCM encrypted in DB (sleutel in `.env`)
 - Login rate-limiting (5 pogingen per 15 minuten per IP)
 
@@ -105,14 +101,29 @@ total_score  = Σ (cat_weight/100 × cat_score)
 Een leverancier wordt **KO** gemarkeerd zodra minstens één deelnemer een
 `type=ko`-requirement met score 1 beoordeelt.
 
-## Updates
+## Updates & deploy-workflow
 
-1. Zet `.env` en `uploads/` even veilig.
-2. Overschrijf de codebase met de nieuwe versie.
-3. Restore `.env` en `uploads/`.
-4. Voer `composer install --no-dev` opnieuw uit bij vendor-updates.
-5. Eventuele schema-migraties worden als `pages/migrate_*.php` meegeleverd en
+Deze repo wordt via **git** gedeployed. Volledige workflow (lokaal ↔ GitHub ↔
+SiteGround, inclusief 1Password-SSH-setup en troubleshooting) staat in
+[`DEPLOY.md`](DEPLOY.md).
+
+Korte samenvatting van een update-cyclus:
+
+1. Lokaal wijzigen → commit + push (GitHub Desktop of `git push`).
+2. Op de server:
+   ```bash
+   ssh <host> 'cd /pad/naar/public_html && git pull'
+   ```
+3. Bij gewijzigde `composer.json`:
+   ```bash
+   ssh <host> 'cd /pad/naar/public_html && composer install --no-dev --optimize-autoloader'
+   ```
+4. Eventuele schema-migraties worden als `pages/migrate_*.php` meegeleverd en
    vereisen een architect-login.
+5. Hoster-cache legen na de pull (bv. SiteGround Dynamic Cache).
+
+`.env` en `uploads/` staan **niet** in git en blijven op de server bewaard
+tussen deploys.
 
 ## Structuur van de codebase
 
@@ -123,10 +134,17 @@ pages/         publieke routes (flat, geen router)
 templates/     layout, sidebar, auth-layout
 public/        health.php, statische assets
 sql/           schema-dump (alleen gebruikt door install.php)
-uploads/       logo + leveranciersbijlagen (schrijfbaar)
+data/          seed-data voor applicatiesoorten (ingeladen bij install)
+uploads/       logo, favicon en leveranciersbijlagen (schrijfbaar)
 logs/          PHP-fouten + mail-log (schrijfbaar)
-vendor/        Composer-dependencies
+vendor/        Composer-dependencies (niet in git)
 ```
+
+## Licentie
+
+[AGPL-3.0](LICENSE) — open source, met network-copyleft: wie de app via een
+netwerk aanbiedt (SaaS, hosted deployment voor derden) moet de broncode van
+eventuele wijzigingen beschikbaar stellen aan de gebruikers.
 
 ## Support
 
