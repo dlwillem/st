@@ -14,6 +14,13 @@ function applicatiesoort_create(string $label, ?string $description = null, int 
     if ($label === '') {
         throw new RuntimeException('Label is verplicht.');
     }
+    if (mb_strlen($label) > 200) {
+        throw new RuntimeException('Label te lang (max 200 tekens).');
+    }
+    $exists = db_value('SELECT id FROM applicatiesoorten WHERE label = :l', [':l' => $label]);
+    if ($exists) {
+        throw new RuntimeException("Applicatiesoort met label '$label' bestaat al.");
+    }
     $id = db_insert('applicatiesoorten', [
         'label'       => $label,
         'description' => ($description !== null && $description !== '') ? $description : null,
@@ -21,6 +28,78 @@ function applicatiesoort_create(string $label, ?string $description = null, int 
     ]);
     audit_log('applicatiesoort_created', 'applicatiesoort', $id, $label);
     return $id;
+}
+
+function applicatiesoort_update(int $id, string $label, ?string $description, int $sortOrder): void {
+    $label = trim($label);
+    if ($label === '') {
+        throw new RuntimeException('Label is verplicht.');
+    }
+    if (mb_strlen($label) > 200) {
+        throw new RuntimeException('Label te lang (max 200 tekens).');
+    }
+    $current = db_one('SELECT id FROM applicatiesoorten WHERE id = :id', [':id' => $id]);
+    if (!$current) {
+        throw new RuntimeException('Applicatiesoort niet gevonden.');
+    }
+    $clash = db_value(
+        'SELECT id FROM applicatiesoorten WHERE label = :l AND id <> :id',
+        [':l' => $label, ':id' => $id]
+    );
+    if ($clash) {
+        throw new RuntimeException("Ander applicatiesoort heeft dit label al: '$label'.");
+    }
+    db_update('applicatiesoorten', [
+        'label'       => $label,
+        'description' => ($description !== null && $description !== '') ? $description : null,
+        'sort_order'  => $sortOrder,
+    ], 'id = :id', [':id' => $id]);
+    audit_log('applicatiesoort_updated', 'applicatiesoort', $id, $label);
+}
+
+/**
+ * Aantal gekoppelde FUNC-templates en traject-instances voor een applicatiesoort.
+ */
+function applicatiesoort_usage(int $id): array {
+    $tpls = (int)db_value(
+        'SELECT COUNT(*) FROM subcategorie_templates WHERE applicatiesoort_id = :id',
+        [':id' => $id]
+    );
+    $subs = (int)db_value(
+        'SELECT COUNT(*) FROM subcategorieen WHERE applicatiesoort_id = :id',
+        [':id' => $id]
+    );
+    return ['templates' => $tpls, 'instances' => $subs];
+}
+
+function applicatiesoort_delete(int $id): void {
+    $row = db_one('SELECT id, label FROM applicatiesoorten WHERE id = :id', [':id' => $id]);
+    if (!$row) {
+        throw new RuntimeException('Applicatiesoort niet gevonden.');
+    }
+    $use = applicatiesoort_usage($id);
+    if ($use['templates'] > 0 || $use['instances'] > 0) {
+        throw new RuntimeException(sprintf(
+            "Kan '%s' niet verwijderen: nog %d app-service(s) en %d traject-koppeling(en). "
+            . "Verplaats of verwijder die eerst.",
+            $row['label'], $use['templates'], $use['instances']
+        ));
+    }
+    db_exec('DELETE FROM applicatiesoorten WHERE id = :id', [':id' => $id]);
+    audit_log('applicatiesoort_deleted', 'applicatiesoort', $id, (string)$row['label']);
+}
+
+/**
+ * Lijst alle applicatiesoorten met usage-counts voor de beheer-UI.
+ */
+function applicatiesoorten_with_usage(): array {
+    return db_all(
+        "SELECT a.id, a.label, a.description, a.sort_order,
+                (SELECT COUNT(*) FROM subcategorie_templates WHERE applicatiesoort_id = a.id) AS templates,
+                (SELECT COUNT(*) FROM subcategorieen         WHERE applicatiesoort_id = a.id) AS instances
+           FROM applicatiesoorten a
+          ORDER BY a.sort_order, a.id"
+    );
 }
 
 /**

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/users.php';
 require_once __DIR__ . '/../includes/structure_export.php';
 require_once __DIR__ . '/../includes/structure_import.php';
+require_once __DIR__ . '/../includes/applicatiesoorten.php';
 require_can('users.edit');
 
 // ─── Structuur download (GET, geen CSRF nodig want leest alleen) ────────────
@@ -174,6 +175,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setting_set('favicon_path', 'uploads/branding/' . $name);
             audit_log('settings.favicon_upload', 'settings', 0, $name);
             flash_set('success', 'Favicon geüpload.');
+        } elseif ($action === 'app_create') {
+            applicatiesoort_create(
+                input_str('label'),
+                input_str('description'),
+                (int)input_str('sort_order')
+            );
+            flash_set('success', 'Applicatiesoort aangemaakt.');
+        } elseif ($action === 'app_update') {
+            applicatiesoort_update(
+                (int)input_str('id'),
+                input_str('label'),
+                input_str('description'),
+                (int)input_str('sort_order')
+            );
+            flash_set('success', 'Applicatiesoort bijgewerkt.');
+        } elseif ($action === 'app_delete') {
+            applicatiesoort_delete((int)input_str('id'));
+            flash_set('success', 'Applicatiesoort verwijderd.');
         } elseif ($action === 'branding_favicon_remove') {
             $prev = setting_get('favicon_path');
             if ($prev !== '' && str_starts_with($prev, 'uploads/branding/')) {
@@ -196,11 +215,12 @@ $active = input('active', '');
 $activeFilter = ($active === '1' || $active === '0') ? (int)$active : null;
 
 $users = users_list($q, $role, $activeFilter);
+$apps  = applicatiesoorten_with_usage();
 
 $pageTitle  = 'Instellingen';
 $currentNav = 'instellingen';
 
-$bodyRenderer = function () use ($users, $q, $role, $activeFilter) { ?>
+$bodyRenderer = function () use ($users, $apps, $q, $role, $activeFilter) { ?>
   <div class="page-header">
     <div>
       <h1>Instellingen</h1>
@@ -308,6 +328,76 @@ $bodyRenderer = function () use ($users, $q, $role, $activeFilter) { ?>
         <?php endif; ?>
       </div>
     </div>
+  </div>
+
+  <!-- ─── Applicatiesoorten ────────────────────────────────────────── -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="card-title" style="display:flex;align-items:center;gap:10px;">
+      <h2 style="margin:0;">Applicatiesoorten</h2>
+      <span class="badge indigo"><?= count($apps) ?></span>
+      <span class="muted small" style="margin-left:6px;">FUNC-groepering van app-services</span>
+      <button type="button" class="btn" style="margin-left:auto;"
+              onclick="appModalOpen()">
+        <?= icon('plus', 14) ?> Nieuwe applicatiesoort
+      </button>
+    </div>
+
+    <?php if (!$apps): ?>
+      <p class="muted small" style="margin:12px 0 0;">Nog geen applicatiesoorten. Voeg er één toe of upload een structuur via onderstaande import.</p>
+    <?php else: ?>
+      <table class="tbl" style="margin-top:10px;">
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>Label</th>
+            <th>Beschrijving</th>
+            <th style="width:110px;">App-services</th>
+            <th style="width:110px;">In trajecten</th>
+            <th style="width:140px;text-align:right;">Acties</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($apps as $a): $busy = ((int)$a['templates'] + (int)$a['instances']) > 0; ?>
+            <tr>
+              <td class="muted"><?= (int)$a['sort_order'] ?></td>
+              <td><strong><?= h($a['label']) ?></strong></td>
+              <td class="muted small"><?= h((string)($a['description'] ?? '')) ?></td>
+              <td><span class="badge"><?= (int)$a['templates'] ?></span></td>
+              <td><span class="badge"><?= (int)$a['instances'] ?></span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button type="button" class="btn sm ghost"
+                        data-app-id="<?= (int)$a['id'] ?>"
+                        data-app-label="<?= h($a['label']) ?>"
+                        data-app-desc="<?= h((string)($a['description'] ?? '')) ?>"
+                        data-app-sort="<?= (int)$a['sort_order'] ?>"
+                        onclick="appModalEdit(this)">
+                  <?= icon('edit', 12) ?> Bewerken
+                </button>
+                <?php if ($busy): ?>
+                  <button type="button" class="btn sm ghost" disabled
+                          title="Kan niet verwijderen: nog <?= (int)$a['templates'] ?> app-service(s) en <?= (int)$a['instances'] ?> traject-koppeling(en).">
+                    <?= icon('trash', 12) ?>
+                  </button>
+                <?php else: ?>
+                  <form method="post" style="display:inline;"
+                        onsubmit="return confirm('Applicatiesoort \u0022<?= h(addslashes($a['label'])) ?>\u0022 verwijderen?');">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="app_delete">
+                    <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+                    <button type="submit" class="btn sm ghost" title="Verwijderen">
+                      <?= icon('trash', 12) ?>
+                    </button>
+                  </form>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+      <p class="muted small" style="margin:10px 0 0;">
+        Verwijderen is alleen mogelijk als er geen app-services en geen traject-koppelingen meer aan hangen.
+      </p>
+    <?php endif; ?>
   </div>
 
   <!-- ─── Gebruikers ───────────────────────────────────────────────── -->
@@ -596,6 +686,65 @@ $bodyRenderer = function () use ($users, $q, $role, $activeFilter) { ?>
   </div>
 
   <!-- ─── Nieuwe gebruiker modal ──────────────────────────────────── -->
+  <!-- ─── Applicatiesoort modal (create + edit) ─────────────────────── -->
+  <div id="app-modal" class="modal-backdrop" style="display:none;"
+       onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="app-modal-title">Nieuwe applicatiesoort</h2>
+        <button type="button" class="btn-icon" onclick="appModalClose()">
+          <?= icon('x', 16) ?>
+        </button>
+      </div>
+      <form method="post" autocomplete="off">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" id="app-form-action" value="app_create">
+        <input type="hidden" name="id" id="app-form-id" value="">
+        <div class="modal-body">
+          <label class="field">Label
+            <input type="text" name="label" id="app-form-label"
+                   required maxlength="200" autofocus placeholder="Bijv. L-17 HRM — Human Resource Management">
+          </label>
+          <label class="field">Beschrijving <span class="muted small">(optioneel)</span>
+            <textarea name="description" id="app-form-desc" rows="3" maxlength="1000"></textarea>
+          </label>
+          <label class="field">Sort order
+            <input type="number" name="sort_order" id="app-form-sort" value="0" min="0" max="99999">
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" onclick="appModalClose()">Annuleren</button>
+          <button type="submit" class="btn" id="app-form-submit">Aanmaken</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script>
+    function appModalOpen() {
+      document.getElementById('app-modal-title').textContent = 'Nieuwe applicatiesoort';
+      document.getElementById('app-form-action').value  = 'app_create';
+      document.getElementById('app-form-id').value      = '';
+      document.getElementById('app-form-label').value   = '';
+      document.getElementById('app-form-desc').value    = '';
+      document.getElementById('app-form-sort').value    = 0;
+      document.getElementById('app-form-submit').textContent = 'Aanmaken';
+      document.getElementById('app-modal').style.display = 'flex';
+    }
+    function appModalEdit(btn) {
+      document.getElementById('app-modal-title').textContent = 'Applicatiesoort bewerken';
+      document.getElementById('app-form-action').value  = 'app_update';
+      document.getElementById('app-form-id').value      = btn.dataset.appId;
+      document.getElementById('app-form-label').value   = btn.dataset.appLabel;
+      document.getElementById('app-form-desc').value    = btn.dataset.appDesc;
+      document.getElementById('app-form-sort').value    = btn.dataset.appSort;
+      document.getElementById('app-form-submit').textContent = 'Opslaan';
+      document.getElementById('app-modal').style.display = 'flex';
+    }
+    function appModalClose() {
+      document.getElementById('app-modal').style.display = 'none';
+    }
+  </script>
+
   <div id="new-user-modal" class="modal-backdrop" style="display:none;"
        onclick="if(event.target===this)this.style.display='none'">
     <div class="modal">
