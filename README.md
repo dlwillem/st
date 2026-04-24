@@ -1,4 +1,4 @@
-# DKG SelectieTool
+# SelectieTool
 
 Webapplicatie voor gestructureerde softwareselectie: requirements, scoring door
 meerdere deelnemers, weging, leveranciers-invulportaal en rapportage.
