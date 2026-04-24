@@ -1,0 +1,38 @@
+# DKG SelectieTool V2 — root .htaccess
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options        "SAMEORIGIN"
+    Header always set Referrer-Policy        "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy     "geolocation=(), microphone=(), camera=()"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+</IfModule>
+
+# ─── Force HTTPS (productie) — localhost/MAMP uitgezonderd ─────────────────────
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS}     off
+    RewriteCond %{HTTP_HOST} !^localhost [NC]
+    RewriteCond %{HTTP_HOST} !^127\.0\.0\.1 [NC]
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# ─── Block gevoelige bestanden ────────────────────────────────────────────────
+<FilesMatch "\.(env|log|md|sql|sqlite|bak|ini|lock|json)$">
+    Require all denied
+</FilesMatch>
+
+# ─── Block directe toegang tot interne mappen (path-agnostisch) ──────────────
+# RewriteRule matches relatief t.o.v. deze .htaccess-locatie, dus werkt zowel
+# onder /st/ (MAMP) als op productie-root.
+<IfModule mod_rewrite.c>
+    RewriteRule ^(config|includes|logs|vendor|docs|sql)(/|$) - [R=404,L]
+</IfModule>
+
+AddDefaultCharset UTF-8
+
+# Pas het pad aan aan jouw installatie. Op root-domein: /pages/404.php.
+# Onder een submap (bijv. MAMP /st/): /st/pages/404.php.
+ErrorDocument 404 /st/pages/404.php

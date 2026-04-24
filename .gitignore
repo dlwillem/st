@@ -1,0 +1,47 @@
+# ─── Environment & secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── Composer (gegenereerde third-party code; altijd regenereerbaar) ─────────
+vendor/
+
+# ─── Frontend tooling (voor als je later npm gebruikt) ───────────────────────
+node_modules/
+package-lock.json
+demo/node_modules/
+demo/demo_output/
+
+# ─── Runtime data (nooit in version control) ─────────────────────────────────
+logs/
+uploads/
+export/*.xlsx
+export/*.zip
+data/*.sqlite
+data/*.db
+
+# ─── Editor & OS troep ───────────────────────────────────────────────────────
+.DS_Store
+__MACOSX/
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ─── IDE-configs (persoonlijk, hoort niet in shared repo) ────────────────────
+.idea/
+.vscode/
+.claude/
+*.sublime-project
+*.sublime-workspace
+
+# ─── Legacy / werkbestanden ──────────────────────────────────────────────────
+install-oud/
+docs/
+*.bak
+*.orig
+
+# ─── Build/temp ──────────────────────────────────────────────────────────────
+/tmp/
+/cache/
+*.log
