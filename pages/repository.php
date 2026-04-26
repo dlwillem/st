@@ -68,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $appId = (int)input('applicatiesoort_id');
                 $name  = input_str('name');
                 $bron  = input_str('bron');
+                $desc  = input_str('description');
                 if ($name === '') throw new RuntimeException('Naam is verplicht.');
                 if (!$catId)      throw new RuntimeException('Hoofdcategorie ontbreekt.');
                 db_insert('subcategorie_templates', [
@@ -75,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'applicatiesoort_id' => $appId ?: null,
                     'name'               => $name,
                     'bron'               => $bron !== '' ? $bron : null,
+                    'description'        => $desc !== '' ? $desc : null,
                     'sort_order'         => 0,
                 ]);
                 audit_log('template_created', 'subcat_template', null, $name);
@@ -86,11 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id    = (int)input('id');
                 $name  = input_str('name');
                 $bron  = input_str('bron');
-                $desc  = input_str('description'); // FUNC: niet opgeslagen op template (zit op app-soort)
+                $desc  = input_str('description');
                 if ($name === '') throw new RuntimeException('Naam is verplicht.');
                 $patch = [
-                    'name' => $name,
-                    'bron' => $bron !== '' ? $bron : null,
+                    'name'        => $name,
+                    'bron'        => $bron !== '' ? $bron : null,
+                    'description' => $desc !== '' ? $desc : null,
                 ];
                 db_update('subcategorie_templates', $patch, 'id = :id', [':id' => $id]);
                 audit_log('template_updated', 'subcat_template', $id, $name);
@@ -148,7 +151,7 @@ if ($activeTab === 'APP') {
     // Tel "in trajecten" via gelijke (categorie_id, name)-koppeling met subcategorieen.
     $funcId = $catIds['FUNC'];
     $funcRows = db_all(
-        "SELECT t.id, t.name, t.bron, t.applicatiesoort_id,
+        "SELECT t.id, t.name, t.bron, t.description, t.applicatiesoort_id,
                 a.name AS app_name, a.description AS app_description,
                 (SELECT COUNT(DISTINCT s.traject_id)
                    FROM subcategorieen s
@@ -162,7 +165,7 @@ if ($activeTab === 'APP') {
     );
 } else {
     $themaRows = db_all(
-        "SELECT t.id, t.name, t.bron,
+        "SELECT t.id, t.name, t.bron, t.description,
                 (SELECT COUNT(DISTINCT s.traject_id)
                    FROM subcategorieen s
                   WHERE s.categorie_id = t.categorie_id
@@ -213,18 +216,18 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
   .repo-screen .cpill.violet { background:rgba(139,92,246,.10); color:#7c3aed; }
   .repo-screen .cpill.red    { background:rgba(239,68,68,.10);  color:#dc2626; }
 
-  /* Tab-navigatie */
-  .repo-tabs { display:flex;gap:6px;border-bottom:1px solid var(--border);margin:18px 0 14px;flex-wrap:wrap; }
-  .repo-tabs a { display:inline-flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;font-weight:600;text-decoration:none;color:var(--muted);border-bottom:2px solid transparent;border-radius:6px 6px 0 0;background:transparent;transition:color .15s,border-color .15s,background .15s; }
-  .repo-tabs a:hover { color:var(--txt);background:rgba(0,0,0,.025); }
-  .repo-tabs a.active { color:var(--pri);border-bottom-color:var(--pri);background:#fff; }
+  /* Card + tabs binnenin */
+  .repo-card { background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:18px; }
 
-  /* Card + tabel */
-  .repo-card { background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:18px; }
-  .repo-card-head { padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);flex-wrap:wrap; }
-  .repo-card-head h2 { margin:0;font-size:15px;font-weight:700; }
+  .repo-tabs { display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--border);background:#fff;flex-wrap:wrap; }
+  .repo-tabs a { display:inline-flex;align-items:center;gap:6px;padding:7px 10px;margin-bottom:-1px;font-size:12px;font-weight:600;text-decoration:none;color:var(--muted);border-bottom:2px solid transparent;border-radius:6px 6px 0 0;transition:color .15s,border-color .15s,background .15s; }
+  .repo-tabs a:hover { color:var(--txt);background:rgba(0,0,0,.025); }
+  .repo-tabs a.active { color:var(--pri);border-bottom-color:var(--pri);background:rgba(8,145,178,.05); }
+
+  .repo-card-head { padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);flex-wrap:wrap; }
   .repo-card-head .sub { color:var(--muted);font-size:12.5px;font-weight:500; }
-  .repo-card-body { padding:6px 0; }
+  .repo-card-head .count { color:var(--muted);font-size:13px;font-weight:600; }
+  .repo-card-body { padding:0; }
 
   .dt { width:100%;border-collapse:collapse;font-size:13.5px; }
   .dt th { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:10px 18px;background:#fafbfc;border-bottom:1px solid var(--border); }
@@ -235,11 +238,18 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
   .dt .muted { color:var(--muted); }
   .dt .empty { padding:30px 18px;text-align:center;color:var(--muted);font-style:italic; }
 
-  /* Count-badges (gecentreerde ronde teller) */
-  .cb { display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:700; }
+  /* Count-badges (lichte rounded vierkanten) */
+  .cb { display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:24px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:700; }
   .cb.blue { background:rgba(8,145,178,.10);color:var(--pri); }
   .cb.green { background:rgba(16,185,129,.10);color:var(--grn); }
   .cb.zero { background:#f3f4f6;color:#9ca3af; }
+
+  /* InfoTooltip (i-icoontje na een naam) */
+  .itip { position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(8,145,178,.12);color:var(--pri);font-size:10px;font-weight:700;font-style:italic;font-family:'Times New Roman',serif;cursor:help;margin-left:6px;vertical-align:middle;line-height:1; }
+  .itip::before { content:'i'; }
+  .itip:hover .itip-pop, .itip:focus .itip-pop { opacity:1;visibility:visible;transform:translate(-50%,0); }
+  .itip-pop { position:absolute;bottom:calc(100% + 8px);left:50%;transform:translate(-50%,4px);background:#0d2d3a;color:#fff;font-style:normal;font-family:'Nunito Sans',system-ui,sans-serif;font-size:12px;font-weight:500;line-height:1.45;padding:8px 12px;border-radius:6px;width:260px;text-align:left;opacity:0;visibility:hidden;transition:opacity .15s,transform .15s,visibility .15s;pointer-events:none;z-index:10;box-shadow:0 6px 20px rgba(0,0,0,.18); }
+  .itip-pop::after { content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#0d2d3a; }
 
   /* Knoppen */
   .rb { display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:var(--r-sm);font-size:13px;font-weight:600;border:1px solid transparent;cursor:pointer;text-decoration:none;background:transparent;color:var(--txt);transition:background .15s,border-color .15s,color .15s; }
@@ -293,47 +303,30 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
       <h1>Structuur stamdata</h1>
       <p class="muted small">Centrale stamdata voor de wizard en requirements. Wijzigingen hier propageren naar nieuw aangemaakte trajecten.</p>
     </div>
-    <div class="actions">
-      <?php if ($activeTab === 'APP'): ?>
-        <button type="button" class="rb primary" onclick="appOpen()"><?= icon('plus', 14) ?> Nieuwe app soort</button>
-      <?php elseif ($activeTab === 'FUNC'): ?>
-        <form method="post" style="display:inline;">
-          <?= csrf_field() ?>
-          <input type="hidden" name="action" value="autolink">
-          <input type="hidden" name="tab" value="FUNC">
-          <button type="submit" class="rb ghost" title="Vul lege applicatiesoort_id in o.b.v. naampatroon">
-            <?= icon('refresh', 14) ?> Auto-koppelen
-          </button>
-        </form>
-        <button type="button" class="rb primary" onclick="svcOpen(0)"><?= icon('plus', 14) ?> Nieuwe service</button>
-      <?php else: ?>
-        <button type="button" class="rb primary" onclick="thmOpen()"><?= icon('plus', 14) ?> Nieuw <?= h($tabs[$activeTab]['singular']) ?></button>
-      <?php endif; ?>
-    </div>
   </div>
 
-  <!-- Tabs -->
-  <nav class="repo-tabs">
-    <?php foreach ($tabs as $code => $m): $active = ($code === $activeTab); ?>
-      <a href="<?= h(APP_BASE_URL) ?>/pages/repository.php?tab=<?= h($code) ?>" class="<?= $active ? 'active' : '' ?>">
-        <span class="cpill <?= h($m['pill']) ?>"><?= h($code) ?></span>
-        <?= h($m['title']) ?>
-      </a>
-    <?php endforeach; ?>
-  </nav>
+  <div class="repo-card">
+    <!-- Tabs binnen het witte blok -->
+    <nav class="repo-tabs">
+      <?php foreach ($tabs as $code => $m): $active = ($code === $activeTab); ?>
+        <a href="<?= h(APP_BASE_URL) ?>/pages/repository.php?tab=<?= h($code) ?>" class="<?= $active ? 'active' : '' ?>">
+          <span class="cpill <?= h($m['pill']) ?>"><?= h($code) ?></span>
+          — <?= h($m['title']) ?>
+        </a>
+      <?php endforeach; ?>
+    </nav>
 
   <?php if ($activeTab === 'APP'): ?>
     <!-- ─── APP-tab ───────────────────────────────────────────────── -->
-    <div class="repo-card">
       <div class="repo-card-head">
-        <div>
-          <h2>App soorten</h2>
-          <span class="sub">Groepering van FUNC applicatieservices — bijv. "L-17 HRM", "L-09 Finance".</span>
-        </div>
         <label class="repo-search">
           <?= icon('search', 14) ?>
-          <input type="search" placeholder="Zoek op naam of bron…" oninput="repoFilter('app', this.value)">
+          <input type="search" placeholder="Zoek app soort…" oninput="repoFilter('app', this.value)">
         </label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="count"><?= count($apps) ?> soort<?= count($apps) === 1 ? '' : 'en' ?></span>
+          <button type="button" class="rb primary" onclick="appOpen()"><?= icon('plus', 14) ?> Nieuwe app soort</button>
+        </div>
       </div>
       <div class="repo-card-body">
         <table class="dt" id="app-table">
@@ -349,9 +342,9 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
             <?php else: foreach ($apps as $a): $busy = ((int)$a['templates'] + (int)$a['instances']) > 0; ?>
               <tr data-search="<?= h(mb_strtolower($a['name'] . ' ' . ($a['bron'] ?? ''))) ?>">
                 <td>
-                  <div class="name"><?= h($a['name']) ?></div>
+                  <span class="name"><?= h($a['name']) ?></span>
                   <?php if (!empty($a['description'])): ?>
-                    <div class="muted" style="font-size:12px;margin-top:2px;"><?= h($a['description']) ?></div>
+                    <span class="itip" tabindex="0" aria-label="Beschrijving"><span class="itip-pop"><?= h($a['description']) ?></span></span>
                   <?php endif; ?>
                 </td>
                 <td class="muted"><?= h((string)($a['bron'] ?? '')) ?: '<span style="color:#cbd5e1;">—</span>' ?></td>
@@ -385,7 +378,7 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
           </tbody>
         </table>
       </div>
-    </div>
+    </div><!-- /.repo-card -->
 
     <!-- App soort modal -->
     <div class="rmodal-bg" id="app-modal" onclick="if(event.target===this)appClose()">
@@ -412,16 +405,22 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
 
   <?php elseif ($activeTab === 'FUNC'): ?>
     <!-- ─── FUNC-tab: applicatieservices, gegroepeerd per app soort ────── -->
-    <div class="repo-card">
       <div class="repo-card-head">
-        <div>
-          <h2>Applicatieservices</h2>
-          <span class="sub">Subcategorieën onder FUNC, gegroepeerd per app soort. Klik een groep om in/uit te klappen.</span>
-        </div>
         <label class="repo-search">
           <?= icon('search', 14) ?>
           <input type="search" placeholder="Zoek op naam of bron…" oninput="repoFilter('func', this.value)">
         </label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="count"><?= count($funcRows) ?> service<?= count($funcRows) === 1 ? '' : 's' ?></span>
+          <form method="post" style="display:inline;"
+                onsubmit="return confirm('Auto-koppel templates en traject-subcats aan app soorten op basis van naam-match?');">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="autolink">
+            <input type="hidden" name="tab" value="FUNC">
+            <button type="submit" class="rb sm ghost" title="Koppel templates en traject-subcats aan app soorten op basis van naam-match"><?= icon('refresh', 12) ?> Auto-koppel</button>
+          </form>
+          <button type="button" class="rb primary" onclick="svcOpen(0)"><?= icon('plus', 14) ?> Nieuwe service</button>
+        </div>
       </div>
       <div class="repo-card-body">
         <?php
@@ -438,10 +437,17 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
           } else {
             foreach ($byApp as $g):
         ?>
+<?php
+            // Pak app-beschrijving uit de eerste rij van de groep (alle rijen hebben dezelfde app)
+            $gDesc = $g['rows'][0]['app_description'] ?? '';
+        ?>
           <div class="fgroup" data-search-group="<?= h(mb_strtolower($g['name'])) ?>">
             <div class="fgroup-head" onclick="this.classList.toggle('collapsed')">
               <span class="chev"><?= icon('chevron-down', 14) ?></span>
               <span class="gname"><?= h($g['name']) ?></span>
+              <?php if (!empty($gDesc)): ?>
+                <span class="itip" tabindex="0" aria-label="Beschrijving" onclick="event.stopPropagation()"><span class="itip-pop"><?= h($gDesc) ?></span></span>
+              <?php endif; ?>
               <span class="gcount">· <?= count($g['rows']) ?> service<?= count($g['rows']) === 1 ? '' : 's' ?></span>
               <span style="margin-left:auto;">
                 <?php if ($g['app_id']): ?>
@@ -454,13 +460,21 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
             <div class="fgroup-body">
               <table class="dt">
                 <colgroup>
-                  <col style="width:36px;"><col><col style="width:160px;"><col style="width:140px;"><col style="width:160px;">
+                  <col style="width:36px;"><col><col style="width:200px;"><col style="width:140px;"><col style="width:160px;">
                 </colgroup>
+                <thead>
+                  <tr><th></th><th>Naam</th><th>Bron</th><th>In trajecten</th><th></th></tr>
+                </thead>
                 <tbody>
                   <?php foreach ($g['rows'] as $r): ?>
                     <tr data-search="<?= h(mb_strtolower($r['name'] . ' ' . ($r['bron'] ?? ''))) ?>">
                       <td></td>
-                      <td><div class="name"><?= h($r['name']) ?></div></td>
+                      <td>
+                        <span class="name"><?= h($r['name']) ?></span>
+                        <?php if (!empty($r['description'])): ?>
+                          <span class="itip" tabindex="0" aria-label="Beschrijving"><span class="itip-pop"><?= h($r['description']) ?></span></span>
+                        <?php endif; ?>
+                      </td>
                       <td class="muted"><?= h((string)($r['bron'] ?? '')) ?: '<span style="color:#cbd5e1;">—</span>' ?></td>
                       <td><span class="cb <?= ((int)$r['in_trajecten']) ? 'green' : 'zero' ?>"><?= (int)$r['in_trajecten'] ?></span></td>
                       <td style="text-align:right;white-space:nowrap;">
@@ -468,15 +482,16 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
                                 data-id="<?= (int)$r['id'] ?>"
                                 data-name="<?= h($r['name']) ?>"
                                 data-bron="<?= h((string)($r['bron'] ?? '')) ?>"
+                                data-desc="<?= h((string)($r['description'] ?? '')) ?>"
                                 data-app="<?= h($r['app_name'] ?? '— zonder app soort —') ?>"
-                                onclick="svcEdit(this)"><?= icon('edit', 12) ?></button>
+                                onclick="svcEdit(this)"><?= icon('edit', 12) ?> Bewerken</button>
                         <form method="post" style="display:inline;"
                               onsubmit="return confirm('Service &quot;<?= h(addslashes($r['name'])) ?>&quot; verwijderen?');">
                           <?= csrf_field() ?>
                           <input type="hidden" name="action" value="tpl_delete">
                           <input type="hidden" name="tab" value="FUNC">
                           <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
-                          <button type="submit" class="rb sm danger"><?= icon('trash', 12) ?></button>
+                          <button type="submit" class="rb sm danger" title="Verwijderen"><?= icon('trash', 12) ?></button>
                         </form>
                       </td>
                     </tr>
@@ -509,6 +524,8 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
           <input type="text" class="fi ro" id="svc-app-readonly" readonly style="display:none;">
           <label class="fl">Naam</label>
           <input type="text" class="fi" name="name" id="svc-name" required maxlength="200">
+          <label class="fl">Beschrijving <span style="text-transform:none;font-weight:500;color:var(--muted);">(optioneel)</span></label>
+          <textarea class="fta" name="description" id="svc-desc" rows="3" maxlength="2000"></textarea>
           <label class="fl">Bron <span style="text-transform:none;font-weight:500;color:var(--muted);">(optioneel)</span></label>
           <input type="text" class="fi" name="bron" id="svc-bron" maxlength="190">
           <div class="actions">
@@ -521,16 +538,15 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
 
   <?php else: /* NFR / VEND / IMPL / SUP / LIC */ ?>
     <!-- ─── Thema-tab ─────────────────────────────────────────────── -->
-    <div class="repo-card">
       <div class="repo-card-head">
-        <div>
-          <h2><?= h($tabs[$activeTab]['title']) ?></h2>
-          <span class="sub">Subcategorieën onder <?= h($activeTab) ?>. Bij het aanmaken van een traject kies je welke van toepassing zijn.</span>
-        </div>
         <label class="repo-search">
           <?= icon('search', 14) ?>
           <input type="search" placeholder="Zoek op naam of bron…" oninput="repoFilter('thm', this.value)">
         </label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="count"><?= count($themaRows) ?> <?= h($tabs[$activeTab]['singular']) ?><?= count($themaRows) === 1 ? '' : 's' ?></span>
+          <button type="button" class="rb primary" onclick="thmOpen()"><?= icon('plus', 14) ?> Nieuw <?= h($tabs[$activeTab]['singular']) ?></button>
+        </div>
       </div>
       <div class="repo-card-body">
         <table class="dt" id="thm-table">
@@ -543,7 +559,12 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
               <tr><td colspan="4" class="empty">Nog geen <?= h($tabs[$activeTab]['singular']) ?>s — voeg er één toe.</td></tr>
             <?php else: foreach ($themaRows as $r): ?>
               <tr data-search="<?= h(mb_strtolower($r['name'] . ' ' . ($r['bron'] ?? ''))) ?>">
-                <td><div class="name"><?= h($r['name']) ?></div></td>
+                <td>
+                  <span class="name"><?= h($r['name']) ?></span>
+                  <?php if (!empty($r['description'])): ?>
+                    <span class="itip" tabindex="0" aria-label="Beschrijving"><span class="itip-pop"><?= h($r['description']) ?></span></span>
+                  <?php endif; ?>
+                </td>
                 <td class="muted"><?= h((string)($r['bron'] ?? '')) ?: '<span style="color:#cbd5e1;">—</span>' ?></td>
                 <td><span class="cb <?= ((int)$r['in_trajecten']) ? 'green' : 'zero' ?>"><?= (int)$r['in_trajecten'] ?></span></td>
                 <td style="text-align:right;white-space:nowrap;">
@@ -551,14 +572,15 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
                           data-id="<?= (int)$r['id'] ?>"
                           data-name="<?= h($r['name']) ?>"
                           data-bron="<?= h((string)($r['bron'] ?? '')) ?>"
-                          onclick="thmEdit(this)"><?= icon('edit', 12) ?></button>
+                          data-desc="<?= h((string)($r['description'] ?? '')) ?>"
+                          onclick="thmEdit(this)"><?= icon('edit', 12) ?> Bewerken</button>
                   <form method="post" style="display:inline;"
                         onsubmit="return confirm('<?= h(ucfirst($tabs[$activeTab]['singular'])) ?> &quot;<?= h(addslashes($r['name'])) ?>&quot; verwijderen?');">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="tpl_delete">
                     <input type="hidden" name="tab" value="<?= h($activeTab) ?>">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
-                    <button type="submit" class="rb sm danger"><?= icon('trash', 12) ?></button>
+                    <button type="submit" class="rb sm danger" title="Verwijderen"><?= icon('trash', 12) ?></button>
                   </form>
                 </td>
               </tr>
@@ -580,6 +602,8 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
           <input type="hidden" name="categorie_id" value="<?= (int)$activeCatId ?>">
           <label class="fl">Naam</label>
           <input type="text" class="fi" name="name" id="thm-name" required maxlength="200" autofocus>
+          <label class="fl">Beschrijving <span style="text-transform:none;font-weight:500;color:var(--muted);">(optioneel)</span></label>
+          <textarea class="fta" name="description" id="thm-desc" rows="3" maxlength="2000"></textarea>
           <label class="fl">Bron <span style="text-transform:none;font-weight:500;color:var(--muted);">(optioneel)</span></label>
           <input type="text" class="fi" name="bron" id="thm-bron" maxlength="190">
           <div class="actions">
@@ -625,6 +649,7 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
     document.getElementById('svc-action').value = 'tpl_create';
     document.getElementById('svc-id').value = '';
     document.getElementById('svc-name').value = '';
+    document.getElementById('svc-desc').value = '';
     document.getElementById('svc-bron').value = '';
     const sel = document.getElementById('svc-app');
     sel.style.display = '';
@@ -639,6 +664,7 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
     document.getElementById('svc-action').value = 'tpl_update';
     document.getElementById('svc-id').value = btn.dataset.id;
     document.getElementById('svc-name').value = btn.dataset.name;
+    document.getElementById('svc-desc').value = btn.dataset.desc || '';
     document.getElementById('svc-bron').value = btn.dataset.bron;
     // App soort is bij update niet aanpasbaar — toon readonly
     const sel = document.getElementById('svc-app');
@@ -659,6 +685,7 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
     document.getElementById('thm-action').value = 'tpl_create';
     document.getElementById('thm-id').value = '';
     document.getElementById('thm-name').value = '';
+    document.getElementById('thm-desc').value = '';
     document.getElementById('thm-bron').value = '';
     document.getElementById('thm-submit').textContent = 'Aanmaken';
     thmM.classList.add('open');
@@ -667,6 +694,7 @@ $bodyRenderer = function () use ($tabs, $activeTab, $activeCatId, $apps, $funcRo
     document.getElementById('thm-action').value = 'tpl_update';
     document.getElementById('thm-id').value = btn.dataset.id;
     document.getElementById('thm-name').value = btn.dataset.name;
+    document.getElementById('thm-desc').value = btn.dataset.desc || '';
     document.getElementById('thm-bron').value = btn.dataset.bron;
     document.getElementById('thm-submit').textContent = 'Opslaan';
     thmM && thmM.classList.add('open');

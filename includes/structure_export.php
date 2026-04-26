@@ -1,11 +1,16 @@
 <?php
 /**
- * Export van de applicatie-structuur (categorieën, applicatiesoorten,
- * subcategorie-templates, DEMO-catalog) naar één .xlsx.
+ * Export van de applicatie-structuur (applicatiesoorten,
+ * subcategorie-templates per hoofdcategorie, DEMO-catalog) naar één .xlsx.
  *
  * Modes:
  *   - 'current'  : met alle huidige data
  *   - 'template' : lege sheets, alleen headers + instructies
+ *
+ * De zes hoofdcategorieën (FUNC, NFR, VEND, IMPL, SUP, LIC) zijn vast in de
+ * code en worden niet via Excel beheerd. Per categorie is er één tabblad met
+ * de bijbehorende subcategorieën (= "app services" voor FUNC, "domeinen"
+ * voor NFR, "thema's" voor VEND/IMPL, etc.).
  *
  * Kolomvolgorde is tevens het import-contract (zie structure_import.php).
  */
@@ -18,10 +23,24 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 const STRUCT_SHEETS = [
-    'Categorieen'      => ['code', 'name', 'type'],
-    'Applicatiesoorten'=> ['name', 'description', 'bron'],
-    'Subcategorieen'   => ['categorie_code', 'applicatiesoort_name', 'name', 'bron'],
-    'DEMO-vragen'      => ['block', 'text'],
+    'App soorten'  => ['name', 'description', 'bron'],
+    'App services' => ['applicatiesoort_name', 'name', 'bron', 'description'],
+    'NFR'          => ['name', 'bron', 'description'],
+    'VEND'         => ['name', 'bron', 'description'],
+    'IMPL'         => ['name', 'bron', 'description'],
+    'SUP'          => ['name', 'bron', 'description'],
+    'LIC'          => ['name', 'bron', 'description'],
+    'DEMO-vragen'  => ['block', 'text'],
+];
+
+/** Mapping van tabbladnaam → hoofdcategorie-code voor subcategorie-tabs. */
+const STRUCT_SUBCAT_SHEETS = [
+    'App services' => 'FUNC',
+    'NFR'          => 'NFR',
+    'VEND'         => 'VEND',
+    'IMPL'         => 'IMPL',
+    'SUP'          => 'SUP',
+    'LIC'          => 'LIC',
 ];
 
 function structure_export_xlsx(string $mode, string $filename): void {
@@ -34,17 +53,19 @@ function structure_export_xlsx(string $mode, string $filename): void {
     $info->fromArray([
         ['Structuur-template'],
         [''],
-        ['Vul onderstaande tabbladen. Kolomvolgorde en -namen niet wijzigen.'],
+        ['Vul onderstaande tabbladen. Tabbladnamen, kolomvolgorde en kolomnamen niet wijzigen.'],
         [''],
-        ['LET OP: Categorieen-code moet exact een van deze zes zijn: FUNC, NFR, VEND, IMPL, SUP, LIC.'],
-        ['Alle zes codes zijn verplicht; naam mag je vrij kiezen. Eigen codes worden afgekeurd.'],
+        ['De zes hoofdcategorieën (FUNC, NFR, VEND, IMPL, SUP, LIC) staan vast in de app'],
+        ['en worden automatisch aangemaakt met hun standaardnamen.'],
         [''],
-        ['Categorieen       — code (FUNC/NFR/VEND/IMPL/SUP/LIC, alle zes verplicht), name, type (functional/non_functional/other)'],
-        ['Applicatiesoorten — name (uniek), description, bron'],
-        ['Subcategorieen    — categorie_code (verwijst naar Categorieen), applicatiesoort_name (optioneel, verwijst naar Applicatiesoorten), name, bron'],
-        ['DEMO-vragen       — block (1..n), text'],
+        ['App soorten   — name (uniek), description, bron'],
+        ['App services  — applicatiesoort_name (verplicht, verwijst naar App soorten), name, bron, description'],
+        ['NFR / VEND /  — name, bron, description (één tabblad per categorie; subcategorieën hangen direct'],
+        ['IMPL / SUP /    onder de categorie, geen koppeling met App soorten)'],
+        ['LIC'],
+        ['DEMO-vragen   — block (1..n), text'],
         [''],
-        ['Import overschrijft de huidige structuur niet; upload alleen op een lege structuur.'],
+        ['Import overschrijft de huidige structuur niet; upload alleen op een lege structuur (gebruik eerst Wipe).'],
     ], null, 'A1');
     $info->getStyle('A1')->getFont()->setBold(true)->setSize(16);
     $info->getColumnDimension('A')->setWidth(110);
@@ -59,7 +80,7 @@ function structure_export_xlsx(string $mode, string $filename): void {
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EC4899']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT],
         ]);
-        foreach ($cols as $i => $_) $sh->getColumnDimensionByColumn($i + 1)->setWidth(24);
+        foreach ($cols as $i => $_) $sh->getColumnDimensionByColumn($i + 1)->setWidth(28);
         $sh->freezePane('A2');
     }
 
@@ -77,21 +98,36 @@ function structure_export_xlsx(string $mode, string $filename): void {
 }
 
 function _struct_fill_current(Spreadsheet $ss): void {
-    $cats = db_all('SELECT code, name, type FROM categorieen ORDER BY sort_order, id');
     $apps = db_all('SELECT name, description, bron FROM applicatiesoorten ORDER BY name');
-    $subs = db_all(
-        'SELECT c.code AS categorie_code, a.name AS applicatiesoort_name, t.name, t.bron
-           FROM subcategorie_templates t
-           JOIN categorieen c ON c.id = t.categorie_id
-           LEFT JOIN applicatiesoorten a ON a.id = t.applicatiesoort_id
-          ORDER BY c.sort_order, a.name, t.name, t.id'
-    );
-    $demo = db_all('SELECT block, text FROM demo_question_catalog WHERE active = 1 ORDER BY block, sort_order, id');
+    _struct_write_rows($ss->getSheetByName('App soorten'), $apps, ['name','description','bron']);
 
-    _struct_write_rows($ss->getSheetByName('Categorieen'),       $cats, ['code','name','type']);
-    _struct_write_rows($ss->getSheetByName('Applicatiesoorten'), $apps, ['name','description','bron']);
-    _struct_write_rows($ss->getSheetByName('Subcategorieen'),    $subs, ['categorie_code','applicatiesoort_name','name','bron']);
-    _struct_write_rows($ss->getSheetByName('DEMO-vragen'),       $demo, ['block','text']);
+    foreach (STRUCT_SUBCAT_SHEETS as $sheetName => $catCode) {
+        if ($catCode === 'FUNC') {
+            $rows = db_all(
+                'SELECT a.name AS applicatiesoort_name, t.name, t.bron, t.description
+                   FROM subcategorie_templates t
+                   JOIN categorieen c ON c.id = t.categorie_id
+                   LEFT JOIN applicatiesoorten a ON a.id = t.applicatiesoort_id
+                  WHERE c.code = :c
+                  ORDER BY a.name, t.name, t.id',
+                [':c' => $catCode]
+            );
+            _struct_write_rows($ss->getSheetByName($sheetName), $rows, ['applicatiesoort_name','name','bron','description']);
+        } else {
+            $rows = db_all(
+                'SELECT t.name, t.bron, t.description
+                   FROM subcategorie_templates t
+                   JOIN categorieen c ON c.id = t.categorie_id
+                  WHERE c.code = :c
+                  ORDER BY t.name, t.id',
+                [':c' => $catCode]
+            );
+            _struct_write_rows($ss->getSheetByName($sheetName), $rows, ['name','bron','description']);
+        }
+    }
+
+    $demo = db_all('SELECT block, text FROM demo_question_catalog WHERE active = 1 ORDER BY block, sort_order, id');
+    _struct_write_rows($ss->getSheetByName('DEMO-vragen'), $demo, ['block','text']);
 }
 
 function _struct_write_rows($sheet, array $rows, array $cols): void {

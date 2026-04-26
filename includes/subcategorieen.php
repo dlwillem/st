@@ -19,7 +19,7 @@ function subcat_find(int $subId, int $trajectId): ?array {
     return $row ?: null;
 }
 
-function subcat_create(int $trajectId, int $catId, string $name): int {
+function subcat_create(int $trajectId, int $catId, string $name, ?string $bron = null, ?string $description = null, ?int $applicatiesoortId = null): int {
     $name = trim($name);
     if ($name === '') throw new RuntimeException('Naam is verplicht.');
     $catExists = db_value('SELECT id FROM categorieen WHERE id = :c', [':c' => $catId]);
@@ -31,10 +31,13 @@ function subcat_create(int $trajectId, int $catId, string $name): int {
         [':c' => $catId, ':t' => $trajectId]
     );
     $id = db_insert('subcategorieen', [
-        'categorie_id' => $catId,
-        'traject_id'   => $trajectId,
-        'name'         => $name,
-        'sort_order'   => $maxOrder + 10,
+        'categorie_id'       => $catId,
+        'traject_id'         => $trajectId,
+        'applicatiesoort_id' => $applicatiesoortId ?: null,
+        'name'               => $name,
+        'bron'               => ($bron !== null && $bron !== '') ? $bron : null,
+        'description'        => ($description !== null && $description !== '') ? $description : null,
+        'sort_order'         => $maxOrder + 10,
     ]);
     subcat_rebalance_weights($trajectId, $catId);
     audit_log('subcat_created', 'subcategorie', $id, $name);
@@ -42,12 +45,34 @@ function subcat_create(int $trajectId, int $catId, string $name): int {
 }
 
 function subcat_rename(int $subId, int $trajectId, string $name): void {
-    $name = trim($name);
-    if ($name === '') throw new RuntimeException('Naam is verplicht.');
+    subcat_update($subId, $trajectId, ['name' => $name]);
+}
+
+/**
+ * Werk een subcategorie van een traject bij. $patch mag bevatten:
+ *   name, bron, description, applicatiesoort_id.
+ */
+function subcat_update(int $subId, int $trajectId, array $patch): void {
     $sub = subcat_find($subId, $trajectId);
     if (!$sub) return;
-    db_update('subcategorieen', ['name' => $name], 'id = :id', [':id' => $subId]);
-    audit_log('subcat_renamed', 'subcategorie', $subId, $name);
+    $allowed = ['name', 'bron', 'description', 'applicatiesoort_id'];
+    $data = [];
+    foreach ($allowed as $k) {
+        if (!array_key_exists($k, $patch)) continue;
+        $v = $patch[$k];
+        if ($k === 'name') {
+            $v = trim((string)$v);
+            if ($v === '') throw new RuntimeException('Naam is verplicht.');
+        } elseif ($k === 'applicatiesoort_id') {
+            $v = $v ? (int)$v : null;
+        } else {
+            $v = (is_string($v) && $v !== '') ? $v : null;
+        }
+        $data[$k] = $v;
+    }
+    if (!$data) return;
+    db_update('subcategorieen', $data, 'id = :id', [':id' => $subId]);
+    audit_log('subcat_updated', 'subcategorie', $subId, (string)($data['name'] ?? $sub['name']));
 }
 
 function subcat_delete(int $subId, int $trajectId): void {

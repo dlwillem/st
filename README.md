@@ -119,7 +119,13 @@ Korte samenvatting van een update-cyclus:
    ssh <host> 'cd /pad/naar/public_html && composer install --no-dev --optimize-autoloader'
    ```
 4. Eventuele schema-migraties worden als `pages/migrate_*.php` meegeleverd en
-   vereisen een architect-login.
+   vereisen een architect-login. Op dit moment beschikbaar:
+   - `pages/migrate_add_impl_bron.php` — voegt hoofdcategorie **IMPL**
+     (Implementatie) toe, hernoemt `applicatiesoorten.label` → `name`,
+     introduceert `bron`/`description` op applicatiesoorten en
+     subcategorie(_template)s, breidt scoring/scope-ENUM uit met `IMPL`, en
+     backfilled een IMPL-weight-rij (gewicht 0) voor bestaande trajecten zodat
+     IMPL in de Weging-tab verschijnt.
 5. Hoster-cache legen na de pull (bv. SiteGround Dynamic Cache).
 
 `.env` en `uploads/` staan **niet** in git en blijven op de server bewaard

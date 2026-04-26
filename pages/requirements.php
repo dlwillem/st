@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $filters = [
     'q'               => input_str('q'),
     'type'            => input_str('type'),
-    'cat_code'        => input_str('cat_code'),
+    'cat_code'        => (isset($_GET['cat_code']) ? input_str('cat_code') : 'FUNC'),
     'subcategorie_id' => input_int('subcategorie_id', 0) ?: null,
 ];
 // Voor tab-counts: haal rijen op zonder cat_code-filter (wel met q/type-filters)
@@ -90,7 +90,14 @@ foreach ($subcats as $s) {
 }
 
 // Tab-volgorde + titels (vast, matcht repository)
-$tabOrder = ['FUNC' => 'Functioneel', 'NFR' => 'Non-functioneel', 'VEND' => 'Leverancier', 'LIC' => 'Licentie', 'SUP' => 'Support'];
+$tabOrder = [
+    'FUNC' => 'Functionele requirements',
+    'NFR'  => 'Non functionele requirements',
+    'VEND' => 'Leverancier',
+    'IMPL' => 'Implementatie',
+    'SUP'  => 'Support',
+    'LIC'  => 'Licentiemodel',
+];
 // Tel requirements per cat_code voor badges
 $countsPerCat = [];
 foreach ($allRows as $r) { $countsPerCat[$r['cat_code']] = ($countsPerCat[$r['cat_code']] ?? 0) + 1; }
@@ -117,8 +124,9 @@ $bodyRenderer = function () use (
       'FUNC' => ['hex' => '#3b82f6', 'bg' => 'rgba(59,130,246,.07)',  'border' => 'rgba(59,130,246,.15)',  'pillBg' => 'rgba(59,130,246,.10)',  'pillFg' => '#2563eb'],
       'NFR'  => ['hex' => '#f59e0b', 'bg' => 'rgba(245,158,11,.07)',  'border' => 'rgba(245,158,11,.18)',  'pillBg' => 'rgba(245,158,11,.12)',  'pillFg' => '#b45309'],
       'VEND' => ['hex' => '#10b981', 'bg' => 'rgba(16,185,129,.07)',  'border' => 'rgba(16,185,129,.18)',  'pillBg' => 'rgba(16,185,129,.12)',  'pillFg' => '#059669'],
-      'LIC'  => ['hex' => '#ef4444', 'bg' => 'rgba(239,68,68,.07)',   'border' => 'rgba(239,68,68,.18)',   'pillBg' => 'rgba(239,68,68,.10)',   'pillFg' => '#dc2626'],
+      'IMPL' => ['hex' => '#06b6d4', 'bg' => 'rgba(6,182,212,.07)',   'border' => 'rgba(6,182,212,.18)',   'pillBg' => 'rgba(6,182,212,.12)',   'pillFg' => '#0e7490'],
       'SUP'  => ['hex' => '#8b5cf6', 'bg' => 'rgba(139,92,246,.07)',  'border' => 'rgba(139,92,246,.18)',  'pillBg' => 'rgba(139,92,246,.12)',  'pillFg' => '#7c3aed'],
+      'LIC'  => ['hex' => '#ef4444', 'bg' => 'rgba(239,68,68,.07)',   'border' => 'rgba(239,68,68,.18)',   'pillBg' => 'rgba(239,68,68,.10)',   'pillFg' => '#dc2626'],
     ];
     $baseQs = array_filter(['q' => $filters['q']], fn($v) => $v !== '' && $v !== null);
     $mkUrl = function ($code) use ($baseQs) {
@@ -166,12 +174,6 @@ $bodyRenderer = function () use (
           <?= icon('upload', 14) ?> Uploaden
         </a>
       <?php endif; ?>
-      <?php if ($canEdit && $traject): ?>
-        <button type="button" class="btn"
-                onclick="document.getElementById('new-req-modal').style.display='flex'">
-          <?= icon('plus', 14) ?> Nieuw requirement
-        </button>
-      <?php endif; ?>
     </div>
   </div>
 
@@ -208,53 +210,75 @@ $bodyRenderer = function () use (
 
   <!-- Categorie-pills -->
   <div class="req-pills">
-    <?php $isAll = $filters['cat_code'] === ''; ?>
-    <a href="<?= h($mkUrl('')) ?>" class="req-pill<?= $isAll ? ' active' : '' ?>"
-       style="<?= $isAll ? '--pill:#0891b2;background:#0891b2;border-color:#0891b2;color:#fff;' : '' ?>">
-      Alle
-      <span class="req-pill-count"><?= (int)$totalAll ?></span>
-    </a>
     <?php foreach ($tabOrder as $code => $title):
       $active = ($filters['cat_code'] === $code);
       $c      = $catColors[$code] ?? ['hex' => '#6b7280'];
       $n      = (int)($countsPerCat[$code] ?? 0);
-      $cat_name_full = $grouped[$code]['name'] ?? $title;
-      $shortName = $title;
-      if ($code === 'NFR') $shortName = 'Non-func.';
     ?>
       <a href="<?= h($mkUrl($code)) ?>"
          class="req-pill<?= $active ? ' active' : '' ?>"
          style="<?= $active ? '--pill:' . h($c['hex']) . ';background:' . h($c['hex']) . ';border-color:' . h($c['hex']) . ';color:#fff;' : '' ?>">
-        <?= h($code) ?> — <?= h($cat_name_full) ?> <?= h($shortName) ?>
+        <?= h($code) ?> — <?= h($title) ?>
         <span class="req-pill-count"><?= $n ?></span>
       </a>
     <?php endforeach; ?>
   </div>
 
-  <?php if (!$rows): ?>
-    <div class="card center" style="padding:40px 20px;">
-      <p style="font-size:2.5rem;margin:0 0 8px;">📋</p>
-      <p class="strong">Nog geen requirements</p>
-      <p class="muted small">
-        <?= array_filter($filters)
-            ? 'Pas je filters aan of voeg een nieuw requirement toe.'
-            : 'Begin met het vastleggen van eisen, wensen en knock-outs.' ?>
-      </p>
-    </div>
-  <?php else: ?>
-    <?php foreach ($grouped as $code => $g):
-      $c   = $catColors[$code] ?? ['hex' => '#6b7280', 'bg' => '#f3f4f6', 'border' => '#e5e7eb', 'pillBg' => '#e5e7eb', 'pillFg' => '#374151'];
-      $cnt = 0;
+  <?php
+    // Render altijd alle bekende hoofdcategorieën uit $tabOrder.
+    // Categorieën zónder stamdata krijgen een "admin contacteren"-melding.
+    $blocksToRender = $tabOrder;
+    if ($filters['cat_code'] !== '' && isset($blocksToRender[$filters['cat_code']])) {
+        $blocksToRender = [$filters['cat_code'] => $blocksToRender[$filters['cat_code']]];
+    }
+    // Naam van de stamdata-eenheid per categorie (voor lege-stamdata-melding)
+    $stamUnitLabel = [
+        'FUNC' => ['singular' => 'app service', 'plural' => 'app services'],
+        'NFR'  => ['singular' => 'domein',      'plural' => 'domeinen'],
+        'VEND' => ['singular' => "thema",       'plural' => "thema's"],
+        'IMPL' => ['singular' => "thema",       'plural' => "thema's"],
+        'SUP'  => ['singular' => "thema",       'plural' => "thema's"],
+        'LIC'  => ['singular' => "thema",       'plural' => "thema's"],
+    ];
+  ?>
+
+  <?php foreach ($blocksToRender as $code => $title):
+      $c        = $catColors[$code] ?? ['hex' => '#6b7280', 'bg' => '#f3f4f6', 'border' => '#e5e7eb', 'pillBg' => '#e5e7eb', 'pillFg' => '#374151'];
+      $g        = $grouped[$code] ?? ['name' => $title, 'subs' => []];
+      $hasStam  = !empty($subsGrouped[$code]['subs']);
+      $cnt      = 0;
       foreach ($g['subs'] as $sub) $cnt += count($sub['reqs']);
+      $unit     = $stamUnitLabel[$code] ?? ['singular' => 'subcategorie', 'plural' => 'subcategorieën'];
     ?>
       <div class="req-cat" style="border:1px solid <?= h($c['border']) ?>;">
         <div class="req-cat-head" style="background:<?= h($c['bg']) ?>;border-bottom:1px solid <?= h($c['border']) ?>;">
           <span class="req-cpill" style="background:<?= h($c['pillBg']) ?>;color:<?= h($c['pillFg']) ?>;"><?= h($code) ?></span>
-          <h2 class="req-cat-title"><?= h($g['name']) ?></h2>
+          <h2 class="req-cat-title"><?= h($title) ?></h2>
           <span class="req-cat-count" style="color:<?= h($c['pillFg']) ?>;"><?= $cnt ?> requirement<?= $cnt === 1 ? '' : 's' ?></span>
+          <?php if ($canEdit): ?>
+            <?php if ($hasStam): ?>
+              <button type="button" class="req-cat-add"
+                      style="background:<?= h($c['hex']) ?>;"
+                      onclick="reqOpenModal('<?= h($code) ?>')">
+                <?= icon('plus', 14) ?> Nieuw requirement
+              </button>
+            <?php else: ?>
+              <button type="button" class="req-cat-add" disabled
+                      title="Geen <?= h($unit['plural']) ?> beschikbaar voor dit traject — vraag een admin de stamdata toe te voegen.">
+                <?= icon('plus', 14) ?> Nieuw requirement
+              </button>
+            <?php endif; ?>
+          <?php endif; ?>
         </div>
 
-        <?php foreach ($g['subs'] as $subId => $sub): ?>
+        <?php if (!$hasStam): ?>
+          <div class="req-stam-missing">
+            <strong>Nog geen <?= h($unit['plural']) ?> beschikbaar voor dit traject.</strong>
+            <span>De sub-structuur ontbreekt nog voor categorie <?= h($code) ?>. Neem contact op met een admin zodat de <?= h($unit['plural']) ?> via <em>Structuur stamdata</em> aan de applicatie worden toegevoegd.</span>
+          </div>
+        <?php elseif (!$g['subs']): ?>
+          <div class="req-empty">Nog geen requirements in deze categorie.</div>
+        <?php else: foreach ($g['subs'] as $subId => $sub): ?>
           <div class="req-sub-label"><?= h($sub['name']) ?></div>
           <?php foreach ($sub['reqs'] as $r):
             $href = APP_BASE_URL . '/pages/requirement_edit.php?id=' . (int)$r['id'];
@@ -284,10 +308,9 @@ $bodyRenderer = function () use (
               </div>
             </div>
           <?php endforeach; ?>
-        <?php endforeach; ?>
+        <?php endforeach; endif; ?>
       </div>
     <?php endforeach; ?>
-  <?php endif; ?>
 
   <style>
     .req-search-wrap { margin: 0 0 14px; }
@@ -404,6 +427,39 @@ $bodyRenderer = function () use (
     }
     .req-row:hover .req-del-btn { opacity:1; color: var(--del, #ef4444); }
     .req-del-btn:hover { background: rgba(239,68,68,.08); }
+
+    /* Per-categorie "+ Nieuw requirement"-knop in cat-head */
+    .req-cat-add {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:7px 12px; border-radius:8px;
+      border:0; cursor:pointer;
+      color:#fff; font:inherit; font-size:12.5px; font-weight:600;
+      transition: filter .12s, transform .12s;
+    }
+    .req-cat-add:hover:not(:disabled) { filter: brightness(.92); transform: translateY(-1px); }
+    .req-cat-add svg { width:14px; height:14px; }
+    .req-cat-add:disabled { background:#cbd5e1 !important; cursor:not-allowed; opacity:.7; }
+
+    /* Stamdata-ontbreekt-melding binnen een categorie-blok */
+    .req-stam-missing {
+      padding: 18px 20px;
+      display:flex; flex-direction:column; gap:4px;
+      background:#fffbeb;
+      border-top:1px solid #fde68a;
+      color:#78350f;
+      font-size:13px; line-height:1.5;
+    }
+    .req-stam-missing strong { color:#78350f; font-weight:700; }
+    .req-stam-missing em { font-style:normal; font-weight:600; color:#92400e; }
+
+    /* Lege categorie-melding (binnen een blok zonder requirements) */
+    .req-empty {
+      padding: 22px 20px;
+      color:#9ca3af; font-size:13px; font-style:italic; text-align:center;
+    }
+
+    /* Brede modal voor Nieuw requirement (1,5× standaard) */
+    #new-req-modal .modal { max-width: 720px; width: 100%; }
   </style>
 
   <?php if ($canEdit): ?>
@@ -412,7 +468,7 @@ $bodyRenderer = function () use (
          onclick="if(event.target===this)this.style.display='none'">
       <div class="modal">
         <div class="modal-header">
-          <h2>Nieuw requirement</h2>
+          <h2 id="new-req-title">Nieuw requirement</h2>
           <button type="button" class="btn-icon"
                   onclick="document.getElementById('new-req-modal').style.display='none'">
             <?= icon('x', 16) ?>
@@ -430,16 +486,10 @@ $bodyRenderer = function () use (
                         placeholder="Optioneel — toelichting, acceptatiecriteria…"></textarea>
             </label>
             <div class="field-row">
-              <label class="field">Subcategorie
-                <select name="subcategorie_id" class="input" required>
+              <label class="field">
+                <span id="new-req-sub-label">Subcategorie</span>
+                <select name="subcategorie_id" id="new-req-sub" class="input" required>
                   <option value="">Kies…</option>
-                  <?php foreach ($subsGrouped as $code => $g): ?>
-                    <optgroup label="<?= h($g['name']) ?>">
-                      <?php foreach ($g['subs'] as $s): ?>
-                        <option value="<?= (int)$s['id'] ?>"><?= h($s['name']) ?></option>
-                      <?php endforeach; ?>
-                    </optgroup>
-                  <?php endforeach; ?>
                 </select>
               </label>
               <label class="field">MoSCoW
@@ -463,6 +513,46 @@ $bodyRenderer = function () use (
         </form>
       </div>
     </div>
+
+    <script>
+      window.__reqSubs = <?= json_encode(array_map(
+          fn($g) => ['name' => $g['name'], 'subs' => array_map(
+              fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']],
+              $g['subs']
+          )],
+          $subsGrouped
+      ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+      window.__reqLabels = {
+        FUNC: { field: 'App service', placeholder: 'Kies app service…' },
+        NFR:  { field: 'Domein',      placeholder: 'Kies domein…' },
+        VEND: { field: 'Thema',       placeholder: 'Kies thema…' },
+        IMPL: { field: 'Thema',       placeholder: 'Kies thema…' },
+        SUP:  { field: 'Thema',       placeholder: 'Kies thema…' },
+        LIC:  { field: 'Thema',       placeholder: 'Kies thema…' }
+      };
+      window.reqOpenModal = function (code) {
+        const m  = document.getElementById('new-req-modal');
+        const sel = document.getElementById('new-req-sub');
+        const lbl = document.getElementById('new-req-sub-label');
+        const ttl = document.getElementById('new-req-title');
+        const labels = window.__reqLabels[code] || { field: 'Subcategorie', placeholder: 'Kies…' };
+        const data = window.__reqSubs[code] || { name: '', subs: [] };
+        if (!data.subs || data.subs.length === 0) {
+          alert('Voor categorie ' + code + ' zijn nog geen ' + labels.field.toLowerCase() + 's beschikbaar in dit traject. Vraag een admin om de stamdata aan te vullen.');
+          return;
+        }
+        lbl.textContent = labels.field;
+        ttl.textContent = 'Nieuw requirement — ' + (data.name || code);
+        sel.innerHTML = '<option value="">' + labels.placeholder + '</option>' +
+          data.subs.map(s => '<option value="' + s.id + '">' + s.name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>').join('');
+        m.style.display = 'flex';
+        // Reset andere velden bij elke open
+        m.querySelector('input[name="title"]').value = '';
+        m.querySelector('textarea[name="description"]').value = '';
+        m.querySelector('select[name="type"]').value = 'eis';
+        setTimeout(() => m.querySelector('input[name="title"]').focus(), 50);
+      };
+    </script>
   <?php endif; ?>
 
 <?php };

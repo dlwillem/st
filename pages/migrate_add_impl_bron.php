@@ -96,6 +96,40 @@ if (!_col_exists($pdo, $dbn, 'subcategorie_templates', 'bron')) {
     $steps[] = 'Kolom subcategorie_templates.bron al aanwezig (overgeslagen).';
 }
 
+// 3b. description-kolom op subcategorie_templates
+if (!_col_exists($pdo, $dbn, 'subcategorie_templates', 'description')) {
+    $pdo->exec(
+        "ALTER TABLE subcategorie_templates
+         ADD COLUMN `description` text COLLATE utf8mb4_unicode_ci DEFAULT NULL
+         AFTER `bron`"
+    );
+    $steps[] = 'Kolom subcategorie_templates.description toegevoegd.';
+} else {
+    $steps[] = 'Kolom subcategorie_templates.description al aanwezig (overgeslagen).';
+}
+
+// 3c. bron + description-kolommen op subcategorieen (per-traject)
+if (!_col_exists($pdo, $dbn, 'subcategorieen', 'bron')) {
+    $pdo->exec(
+        "ALTER TABLE subcategorieen
+         ADD COLUMN `bron` varchar(190) COLLATE utf8mb4_unicode_ci DEFAULT NULL
+         AFTER `name`"
+    );
+    $steps[] = 'Kolom subcategorieen.bron toegevoegd.';
+} else {
+    $steps[] = 'Kolom subcategorieen.bron al aanwezig (overgeslagen).';
+}
+if (!_col_exists($pdo, $dbn, 'subcategorieen', 'description')) {
+    $pdo->exec(
+        "ALTER TABLE subcategorieen
+         ADD COLUMN `description` text COLLATE utf8mb4_unicode_ci DEFAULT NULL
+         AFTER `bron`"
+    );
+    $steps[] = 'Kolom subcategorieen.description toegevoegd.';
+} else {
+    $steps[] = 'Kolom subcategorieen.description al aanwezig (overgeslagen).';
+}
+
 // 4. ENUM-uitbreiding: scoring_rondes.scope en traject_deelnemer_scopes.scope
 //    moeten 'IMPL' kennen voordat we daadwerkelijk IMPL-rondes/scopes toelaten.
 function _enum_has(PDO $pdo, string $db, string $table, string $col, string $value): bool {
@@ -144,6 +178,35 @@ if (!$implExists) {
     $steps[] = 'Hoofdcategorie IMPL (Implementatie) toegevoegd.';
 } else {
     $steps[] = 'Hoofdcategorie IMPL al aanwezig (overgeslagen).';
+}
+
+// 6. Backfill: zorg dat ieder bestaand traject een weight-rij heeft voor IMPL
+//    (anders verschijnt IMPL niet in de weging-tab van oudere trajecten).
+$implCatId = (int)db_value('SELECT id FROM categorieen WHERE code = :c', [':c' => 'IMPL']);
+if ($implCatId) {
+    $missing = db_all(
+        'SELECT t.id FROM trajecten t
+          WHERE NOT EXISTS (
+                SELECT 1 FROM weights w
+                 WHERE w.traject_id = t.id
+                   AND w.categorie_id = :c
+                   AND w.subcategorie_id IS NULL
+          )',
+        [':c' => $implCatId]
+    );
+    if ($missing) {
+        foreach ($missing as $r) {
+            db_insert('weights', [
+                'traject_id'      => (int)$r['id'],
+                'categorie_id'    => $implCatId,
+                'subcategorie_id' => null,
+                'weight'          => 0,
+            ]);
+        }
+        $steps[] = 'IMPL-weight-rij toegevoegd voor ' . count($missing) . ' bestaand(e) traject(en) (gewicht 0 — pas aan in Weging).';
+    } else {
+        $steps[] = 'Alle trajecten hebben al een IMPL-weight-rij (overgeslagen).';
+    }
 }
 
 echo "Migratie voltooid:\n";

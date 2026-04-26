@@ -117,7 +117,7 @@ function applicatiesoorten_copy_to_traject(int $trajectId, array $applicatiesoor
 
     $in = implode(',', array_fill(0, count($applicatiesoortIds), '?'));
     $tpls = db_all(
-        "SELECT id, applicatiesoort_id, name, sort_order
+        "SELECT id, applicatiesoort_id, name, bron, description, sort_order
            FROM subcategorie_templates
           WHERE categorie_id = $funcId AND applicatiesoort_id IN ($in)
           ORDER BY applicatiesoort_id, name, id",
@@ -130,6 +130,8 @@ function applicatiesoorten_copy_to_traject(int $trajectId, array $applicatiesoor
             'traject_id'         => $trajectId,
             'applicatiesoort_id' => (int)$t['applicatiesoort_id'],
             'name'               => $t['name'],
+            'bron'               => $t['bron'] ?? null,
+            'description'        => $t['description'] ?? null,
             'sort_order'         => (int)$t['sort_order'],
         ]);
         $n++;
@@ -147,7 +149,7 @@ function templates_copy_to_traject(int $trajectId, array $templateIds): int {
     if (!$templateIds) return 0;
     $in = implode(',', array_fill(0, count($templateIds), '?'));
     $tpls = db_all(
-        "SELECT id, categorie_id, applicatiesoort_id, name, sort_order
+        "SELECT id, categorie_id, applicatiesoort_id, name, bron, description, sort_order
            FROM subcategorie_templates
           WHERE id IN ($in)
           ORDER BY categorie_id, name, id",
@@ -160,6 +162,8 @@ function templates_copy_to_traject(int $trajectId, array $templateIds): int {
             'traject_id'         => $trajectId,
             'applicatiesoort_id' => $t['applicatiesoort_id'] ? (int)$t['applicatiesoort_id'] : null,
             'name'               => $t['name'],
+            'bron'               => $t['bron'] ?? null,
+            'description'        => $t['description'] ?? null,
             'sort_order'         => (int)$t['sort_order'],
         ]);
         $n++;

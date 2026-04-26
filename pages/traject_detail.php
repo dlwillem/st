@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'select'          => 'traject.view',
         'subcat_add'      => 'trajecten.edit',
         'subcat_rename'   => 'trajecten.edit',
+        'subcat_update'   => 'trajecten.edit',
         'subcat_delete'   => 'trajecten.edit',
         'save_weights'    => 'weging.edit',
         'reset_weights'   => 'weging.edit',
@@ -155,15 +156,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ─── Structuur ──────────────────────────────────────────────────────
         } elseif ($action === 'subcat_add') {
             $name  = input_str('name');
+            $bron  = input_str('bron');
+            $desc  = input_str('description');
             $catId = input_int('categorie_id');
             if ($name === '' || !$catId) throw new RuntimeException('Naam en hoofdcategorie zijn verplicht.');
-            subcat_create($id, $catId, $name);
+            subcat_create($id, $catId, $name, $bron !== '' ? $bron : null, $desc !== '' ? $desc : null);
             flash_set('success', 'Toegevoegd: ' . $name);
         } elseif ($action === 'subcat_rename') {
             $sid  = input_int('sub_id', 0);
             $name = input_str('name');
             if (!$sid || $name === '') throw new RuntimeException('Ongeldige invoer.');
             subcat_rename($sid, $id, $name);
+            flash_set('success', 'Bijgewerkt.');
+        } elseif ($action === 'subcat_update') {
+            $sid  = input_int('sub_id', 0);
+            $name = input_str('name');
+            $bron = input_str('bron');
+            $desc = input_str('description');
+            if (!$sid || $name === '') throw new RuntimeException('Ongeldige invoer.');
+            subcat_update($sid, $id, [
+                'name'        => $name,
+                'bron'        => $bron,
+                'description' => $desc,
+            ]);
             flash_set('success', 'Bijgewerkt.');
         } elseif ($action === 'subcat_delete') {
             $sid = input_int('sub_id', 0);
@@ -677,214 +692,302 @@ function render_tab_collegas(array $collegas, bool $canEdit, int $trajectId, arr
 
 function render_tab_structuur(array $structure, bool $canEdit, int $id, string $stab, array $demoCatalog = []): void {
     $subTabs = [
-        'FUNC' => 'Applicatieservices',
-        'NFR'  => 'NFR-domeinen',
-        'VEND' => 'VEND-thema\'s',
-        'LIC'  => 'LIC-thema\'s',
-        'SUP'  => 'SUP-thema\'s',
-        'DEMO' => 'Demo-criteria',
+        'FUNC' => ['title' => 'Applicatieservices',     'singular' => 'applicatieservice', 'plural' => 'applicatieservices', 'pill' => 'blue'],
+        'NFR'  => ['title' => 'Domeinen',                'singular' => 'domein',            'plural' => 'domeinen',            'pill' => 'amber'],
+        'VEND' => ['title' => "Thema's leverancier",     'singular' => 'thema',             'plural' => "thema's",             'pill' => 'green'],
+        'IMPL' => ['title' => "Thema's implementatie",   'singular' => 'thema',             'plural' => "thema's",             'pill' => 'cyan2'],
+        'SUP'  => ['title' => "Thema's support",         'singular' => 'thema',             'plural' => "thema's",             'pill' => 'violet'],
+        'LIC'  => ['title' => "Thema's licenties",       'singular' => 'thema',             'plural' => "thema's",             'pill' => 'red'],
+        'DEMO' => ['title' => 'Demo-criteria',           'singular' => 'vraag',             'plural' => 'vragen',              'pill' => 'cyan'],
     ];
+    $current = null;
+    foreach ($structure as $c) { if ($c['code'] === $stab) { $current = $c; break; } }
+    $isDemo = ($stab === 'DEMO');
+    $isFunc = ($stab === 'FUNC');
+    $meta   = $subTabs[$stab];
 ?>
-  <!-- Sub-tabs -->
-  <div class="tabs" style="display:flex;gap:4px;border-bottom:1px solid var(--gray-200);margin-bottom:16px;flex-wrap:wrap;">
-    <?php foreach ($subTabs as $code => $title):
-      $active = ($code === $stab);
-      $style  = ($code === 'DEMO') ? ['icon' => 'monitor', 'color' => 'blue'] : requirement_cat_style($code);
-      $col    = 'var(--' . $style['color'] . '-600)';
-      $count  = 0;
-      if ($code === 'DEMO') {
-          $count = 0;
-          foreach ($demoCatalog as $blk) $count += count($blk['questions'] ?? []);
-      } else {
-          foreach ($structure as $c) { if ($c['code'] === $code) { $count = count($c['subs']); break; } }
-      }
-    ?>
-      <a href="<?= h(APP_BASE_URL) ?>/pages/traject_detail.php?id=<?= (int)$id ?>&tab=structuur&stab=<?= h($code) ?>"
-         class="tab<?= $active ? ' active' : '' ?>"
-         style="padding:8px 14px;border:1px solid <?= $active ? 'var(--gray-200)' : 'transparent' ?>;border-top:<?= $active ? '3px solid ' . $col : '1px solid transparent' ?>;border-bottom:<?= $active ? '1px solid #fff' : 'none' ?>;border-radius:6px 6px 0 0;margin-bottom:-1px;background:<?= $active ? '#fff' : 'transparent' ?>;color:<?= $active ? $col : 'var(--gray-600)' ?>;text-decoration:none;font-weight:<?= $active ? '600' : '500' ?>;font-size:0.875rem;display:inline-flex;align-items:center;gap:6px;">
-        <span style="color:<?= $col ?>;display:inline-flex;"><?= icon($style['icon'], 14) ?></span>
-        <?= h($code) ?> — <?= h($title) ?>
-        <span class="muted small">(<?= $count ?>)</span>
-      </a>
-    <?php endforeach; ?>
-  </div>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&display=swap');
+  .repo-screen { --pri:#0891b2;--pri-h:#0e7490;--grn:#10b981;--txt:#0d2d3a;--muted:#6b7280;--border:#e2e6ea;--bg:#f4f6f8;--card:#ffffff;--r:12px;--r-sm:6px;--sh:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);--sh-h:0 6px 20px rgba(0,0,0,.1),0 16px 40px rgba(0,0,0,.07);font-family:'Nunito Sans',system-ui,sans-serif;color:var(--txt); }
+  .repo-screen h1, .repo-screen h2, .repo-screen p { font-family:inherit; }
+  .repo-screen .cpill { padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase; }
+  .repo-screen .cpill.cyan   { background:rgba(8,145,178,.10);color:#0891b2; }
+  .repo-screen .cpill.blue   { background:rgba(59,130,246,.10);color:#2563eb; }
+  .repo-screen .cpill.amber  { background:rgba(245,158,11,.10);color:#b45309; }
+  .repo-screen .cpill.green  { background:rgba(16,185,129,.10);color:#059669; }
+  .repo-screen .cpill.cyan2  { background:rgba(6,182,212,.10);color:#0e7490; }
+  .repo-screen .cpill.violet { background:rgba(139,92,246,.10);color:#7c3aed; }
+  .repo-screen .cpill.red    { background:rgba(239,68,68,.10);color:#dc2626; }
+  .repo-card { background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:18px; }
+  .repo-tabs { display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--border);background:#fff;flex-wrap:wrap;border-radius:var(--r) var(--r) 0 0; }
+  .repo-tabs a { display:inline-flex;align-items:center;gap:6px;padding:7px 10px;margin-bottom:-1px;font-size:12px;font-weight:600;text-decoration:none;color:var(--muted);border-bottom:2px solid transparent;border-radius:6px 6px 0 0;transition:color .15s,border-color .15s,background .15s; }
+  .repo-tabs a:hover { color:var(--txt);background:rgba(0,0,0,.025); }
+  .repo-tabs a.active { color:var(--pri);border-bottom-color:var(--pri);background:rgba(8,145,178,.05); }
+  .repo-card-head { padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);flex-wrap:wrap; }
+  .repo-card-head .count { color:var(--muted);font-size:13px;font-weight:600; }
+  .repo-card-body { padding:0; }
+  .dt { width:100%;border-collapse:collapse;font-size:13.5px; }
+  .dt th { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:10px 18px;background:#fafbfc;border-bottom:1px solid var(--border); }
+  .dt td { padding:11px 18px;border-bottom:1px solid var(--border);vertical-align:middle; }
+  .dt tr:last-child td { border-bottom:0; }
+  .dt tr:hover td { background:#f9fafb; }
+  .dt .name { font-weight:600;color:var(--txt); }
+  .dt .muted { color:var(--muted); }
+  .dt .empty { padding:30px 18px;text-align:center;color:var(--muted);font-style:italic; }
+  .cb { display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:24px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:700; }
+  .cb.blue { background:rgba(8,145,178,.10);color:var(--pri); }
+  .cb.green { background:rgba(16,185,129,.10);color:var(--grn); }
+  .cb.zero { background:#f3f4f6;color:#9ca3af; }
+  .itip { position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(8,145,178,.12);color:var(--pri);font-size:10px;font-weight:700;font-style:italic;font-family:'Times New Roman',serif;cursor:help;margin-left:6px;vertical-align:middle;line-height:1; }
+  .itip::before { content:'i'; }
+  .itip:hover .itip-pop, .itip:focus .itip-pop { opacity:1;visibility:visible;transform:translate(-50%,0); }
+  .itip-pop { position:absolute;bottom:calc(100% + 8px);left:50%;transform:translate(-50%,4px);background:#0d2d3a;color:#fff;font-style:normal;font-family:'Nunito Sans',system-ui,sans-serif;font-size:12px;font-weight:500;line-height:1.45;padding:8px 12px;border-radius:6px;width:260px;text-align:left;opacity:0;visibility:hidden;transition:opacity .15s,transform .15s,visibility .15s;pointer-events:none;z-index:10;box-shadow:0 6px 20px rgba(0,0,0,.18); }
+  .itip-pop::after { content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#0d2d3a; }
+  .rb { display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:var(--r-sm);font-size:13px;font-weight:600;border:1px solid transparent;cursor:pointer;text-decoration:none;background:transparent;color:var(--txt);transition:background .15s,border-color .15s,color .15s; }
+  .rb:hover { background:rgba(0,0,0,.04); }
+  .rb.primary { background:var(--pri);color:#fff;border-color:var(--pri); }
+  .rb.primary:hover { background:var(--pri-h);border-color:var(--pri-h); }
+  .rb.ghost { border-color:var(--border); }
+  .rb.danger { color:#dc2626; }
+  .rb.danger:hover { background:rgba(220,38,38,.08); }
+  .rb.sm { padding:5px 9px;font-size:12px; }
+  .rb[disabled] { opacity:.4;cursor:not-allowed; }
+  .repo-search { display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;font-size:13px;min-width:240px; }
+  .repo-search input { border:0;outline:0;flex:1;font:inherit;color:var(--txt);background:transparent; }
+  .repo-search svg { color:var(--muted); }
+  .rmodal-bg { position:fixed;inset:0;background:rgba(13,45,58,.45);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px; }
+  .rmodal-bg.open { display:flex; }
+  .rmodal { background:#fff;border-radius:var(--r);box-shadow:var(--sh-h);width:520px;max-width:100%;padding:28px;font-family:'Nunito Sans',system-ui,sans-serif;color:var(--txt); }
+  .rmodal h3 { margin:0 0 18px;font-size:18px;font-weight:700; }
+  .rmodal .fl { display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:14px 0 6px; }
+  .rmodal .fl:first-of-type { margin-top:0; }
+  .rmodal .fi, .rmodal .fta { width:100%;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;font:inherit;color:var(--txt);background:#fff; }
+  .rmodal .fi:focus, .rmodal .fta:focus { outline:0;border-color:var(--pri); }
+  .rmodal .fta { resize:vertical;min-height:80px; }
+  .rmodal .ro { background:#f9fafb;color:var(--muted); }
+  .rmodal .actions { display:flex;justify-content:flex-end;gap:10px;margin-top:22px; }
+  .demo-block { padding:14px 18px;border-bottom:1px solid var(--border); }
+  .demo-block:last-child { border-bottom:0; }
+  .demo-block .dh { display:flex;align-items:center;gap:10px;margin-bottom:6px; }
+  .demo-block ol { margin:6px 0 0;padding-left:22px;font-size:13.5px;line-height:1.55; }
+</style>
 
-  <?php if ($stab === 'DEMO'): ?>
-    <?php render_demo_criteria_panel($demoCatalog, $canEdit, $id); return; ?>
-  <?php endif; ?>
-  <?php
-  $current = null;
-  foreach ($structure as $c) { if ($c['code'] === $stab) { $current = $c; break; } }
-  if (!$current) { echo '<p class="muted">Geen data.</p>'; return; }
-  $style    = requirement_cat_style($stab);
-  $colorVar = 'var(--' . $style['color'] . '-600)';
-  $isFunc   = ($stab === 'FUNC');
-  $itemLabel  = $isFunc ? 'applicatieservice' : ($stab === 'NFR' ? 'domein' : 'thema');
-  $itemPlural = $isFunc ? 'applicatieservices' : ($stab === 'NFR' ? 'domeinen' : 'thema\'s');
-  ?>
-
-  <div class="card" style="border-left:4px solid <?= h($colorVar) ?>;">
-    <div class="card-title">
-      <h2 style="display:flex;align-items:center;gap:8px;">
-        <span style="color:<?= h($colorVar) ?>;display:inline-flex;"><?= icon($style['icon'], 16) ?></span>
-        <?= h($current['name']) ?>
-        <span class="badge <?= h($style['color']) ?>"><?= h($current['code']) ?></span>
-      </h2>
-      <span class="muted small"><?= count($current['subs']) ?> <?= count($current['subs']) === 1 ? h($itemLabel) : h($itemPlural) ?></span>
-    </div>
-    <p class="muted small" style="margin-top:0;">
-      <?php if ($isFunc): ?>
-        Applicatieservices die in dit traject worden uitgevraagd. Applicatiesoort is overgenomen uit de Structuur stamdata.
-      <?php else: ?>
-        <?= h(ucfirst($itemPlural)) ?> worden per traject beheerd. Gewichten herverdelen automatisch bij toevoegen/verwijderen.
-      <?php endif; ?>
-    </p>
-
-    <div class="table-wrap" style="margin-top:10px;">
-      <table class="table">
-        <thead><tr>
-          <th style="width:<?= $isFunc ? '45%' : '65%' ?>;">Naam</th>
-          <?php if ($isFunc): ?><th style="width:25%;">Applicatiesoort</th><?php endif; ?>
-          <th>Requirements</th>
-          <th class="right" style="width:120px;">Acties</th>
-        </tr></thead>
-        <tbody>
-          <?php if (!$current['subs']): ?>
-            <tr><td colspan="<?= $isFunc ? 4 : 3 ?>" class="muted center" style="padding:20px;">
-              Nog geen <?= h($itemPlural) ?>.
-            </td></tr>
-          <?php endif; ?>
-          <?php foreach ($current['subs'] as $s):
-              $reqCount = (int)db_value(
-                  'SELECT COUNT(*) FROM requirements WHERE subcategorie_id = :s',
-                  [':s' => (int)$s['id']]
-              );
-              $fid = 'sren_' . (int)$s['id'];
-          ?>
-            <tr>
-              <?php if ($canEdit): ?>
-                <form id="<?= h($fid) ?>" method="post"></form>
-                <td>
-                  <input form="<?= h($fid) ?>" type="text" name="name" class="input" required maxlength="200"
-                         value="<?= h($s['name']) ?>" style="margin-top:0;">
-                  <input form="<?= h($fid) ?>" type="hidden" name="action" value="subcat_rename">
-                  <input form="<?= h($fid) ?>" type="hidden" name="sub_id" value="<?= (int)$s['id'] ?>">
-                  <input form="<?= h($fid) ?>" type="hidden" name="tab" value="structuur">
-                  <input form="<?= h($fid) ?>" type="hidden" name="stab" value="<?= h($stab) ?>">
-                  <input form="<?= h($fid) ?>" type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                </td>
-                <?php if ($isFunc): ?>
-                  <td class="muted small"><?= h((string)($s['app_name'] ?? '—')) ?: '—' ?></td>
-                <?php endif; ?>
-                <td><span class="badge <?= $reqCount ? h($style['color']) : 'gray' ?>"><?= $reqCount ?></span></td>
-                <td class="right" style="white-space:nowrap;">
-                  <button form="<?= h($fid) ?>" type="submit" class="btn sm ghost" title="Opslaan"><?= icon('check', 12) ?></button>
-                  <form method="post" style="display:inline;"
-                        onsubmit="return confirm('Verwijderen?<?= $reqCount ? ' Dit kan alleen als er 0 requirements aan hangen.' : '' ?>')">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="subcat_delete">
-                    <input type="hidden" name="sub_id" value="<?= (int)$s['id'] ?>">
-                    <input type="hidden" name="tab" value="structuur">
-                    <input type="hidden" name="stab" value="<?= h($stab) ?>">
-                    <button type="submit" class="btn sm ghost"
-                            <?= $reqCount ? 'disabled title="Verwijder eerst de requirements"' : '' ?>>
-                      <?= icon('trash', 12) ?>
-                    </button>
-                  </form>
-                </td>
-              <?php else: ?>
-                <td><?= h($s['name']) ?></td>
-                <?php if ($isFunc): ?>
-                  <td class="muted small"><?= h((string)($s['app_name'] ?? '—')) ?: '—' ?></td>
-                <?php endif; ?>
-                <td><span class="badge <?= $reqCount ? h($style['color']) : 'gray' ?>"><?= $reqCount ?></span></td>
-                <td class="right"></td>
-              <?php endif; ?>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
-
-    <?php if ($canEdit): ?>
-      <form method="post" class="row" style="margin-top:12px;gap:8px;align-items:flex-end;">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="subcat_add">
-        <input type="hidden" name="categorie_id" value="<?= (int)$current['id'] ?>">
-        <input type="hidden" name="tab" value="structuur">
-        <input type="hidden" name="stab" value="<?= h($stab) ?>">
-        <label class="field" style="flex:1;margin-bottom:0;">
-          Nieuw <?= h($itemLabel) ?>
-          <input type="text" name="name" maxlength="200" required
-                 placeholder="Naam">
-        </label>
-        <button type="submit" class="btn"><?= icon('plus', 14) ?> Toevoegen</button>
-      </form>
-    <?php endif; ?>
-  </div>
-<?php }
-
-function render_demo_criteria_panel(array $catalog, bool $canEdit, int $id): void {
-    $style    = ['icon' => 'monitor', 'color' => 'blue'];
-    $colorVar = 'var(--' . $style['color'] . '-600)';
-    $total = 0;
-    foreach ($catalog as $blk) $total += count($blk['questions'] ?? []);
-?>
-  <div class="card" style="border-left:4px solid <?= h($colorVar) ?>;">
-    <div class="card-title">
-      <h2 style="display:flex;align-items:center;gap:8px;">
-        <span style="color:<?= h($colorVar) ?>;display:inline-flex;"><?= icon($style['icon'], 16) ?></span>
-        Demo
-        <span class="badge <?= h($style['color']) ?>">DEMO</span>
-      </h2>
-      <span class="muted small"><?= (int)$total ?> <?= $total === 1 ? 'vraag' : 'vragen' ?></span>
-    </div>
-    <p class="muted small" style="margin-top:0;">
-      Demo-vragenlijst voor leveranciers, verdeeld over vijf blokken.
-      Blokken 1, 2 en 4 vormen samen de demo-score (gelijk gewicht per blok).
-      Blok 3 is een risico-indicator: onder <?= h(number_format(DEMO_RISK_THRESHOLD, 1)) ?> krijgt de leverancier
-      een ⚠️-vlag. Blok 5 zijn open vragen — vrije tekst, niet gescoord, altijd optioneel.
-      Deze lijst is een <strong>kopie</strong> van de master-catalog (Structuur stamdata) en
-      kan per-traject worden aangepast via de beheerknop.
-    </p>
-
-    <?php foreach (DEMO_BLOCKS as $block => $meta):
-      $qs = $catalog[$block]['questions'] ?? [];
-      $isOpen = demo_block_is_open($block);
-      $bcolor = $isOpen ? 'gray' : ($meta['in_total'] ? 'blue' : 'amber');
-    ?>
-      <div style="margin-top:14px;">
-        <div class="row-sm" style="gap:8px;align-items:center;margin-bottom:6px;">
-          <span class="badge <?= h($bcolor) ?>">Blok <?= (int)$block ?></span>
-          <strong><?= h($meta['title']) ?></strong>
-          <?php if ($isOpen): ?>
-            <span class="badge gray" style="font-size:0.7rem;">Open tekst</span>
-          <?php elseif (!$meta['in_total']): ?>
-            <span class="badge amber" style="font-size:0.7rem;">Risico-indicator</span>
-          <?php endif; ?>
-          <span class="muted small">· <?= count($qs) ?> vragen</span>
-        </div>
-        <p class="muted small" style="margin:0 0 6px;"><?= h($meta['subtitle']) ?></p>
-        <?php if (!$qs): ?>
-          <p class="muted small" style="font-style:italic;">Nog geen vragen in dit blok.</p>
-        <?php else: ?>
-          <ol style="margin:0;padding-left:20px;font-size:0.875rem;line-height:1.5;">
-            <?php foreach ($qs as $q): ?>
-              <li><?= h($q['text']) ?></li>
-            <?php endforeach; ?>
-          </ol>
-        <?php endif; ?>
-      </div>
-    <?php endforeach; ?>
-
-    <?php if ($canEdit): ?>
-      <div class="row" style="margin-top:14px;gap:8px;align-items:center;">
-        <a class="btn sm" href="<?= h(APP_BASE_URL) ?>/pages/demo_questions.php?traject_id=<?= (int)$id ?>">
-          <?= icon('edit', 12) ?> Demo-vragen beheren
+<div class="repo-screen">
+  <div class="repo-card">
+    <nav class="repo-tabs">
+      <?php foreach ($subTabs as $code => $m):
+        $active = ($code === $stab);
+        $count  = 0;
+        if ($code === 'DEMO') {
+            foreach ($demoCatalog as $blk) $count += count($blk['questions'] ?? []);
+        } else {
+            foreach ($structure as $c) { if ($c['code'] === $code) { $count = count($c['subs']); break; } }
+        }
+      ?>
+        <a href="<?= h(APP_BASE_URL) ?>/pages/traject_detail.php?id=<?= (int)$id ?>&tab=structuur&stab=<?= h($code) ?>"
+           class="<?= $active ? 'active' : '' ?>">
+          <span class="cpill <?= h($m['pill']) ?>"><?= h($code) ?></span>
+          — <?= h($m['title']) ?>
+          <span style="color:var(--muted);font-weight:500;">(<?= $count ?>)</span>
         </a>
+      <?php endforeach; ?>
+    </nav>
+
+    <?php if ($isDemo): ?>
+      <?php
+        $total = 0;
+        foreach ($demoCatalog as $blk) $total += count($blk['questions'] ?? []);
+      ?>
+      <div class="repo-card-head">
+        <div style="color:var(--muted);font-size:12.5px;">
+          Demo-vragenlijst voor leveranciers (kopie van master-catalog).
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="count"><?= (int)$total ?> <?= $total === 1 ? 'vraag' : 'vragen' ?></span>
+          <?php if ($canEdit): ?>
+            <a class="rb primary" href="<?= h(APP_BASE_URL) ?>/pages/demo_questions.php?traject_id=<?= (int)$id ?>">
+              <?= icon('edit', 14) ?> Demo-vragen beheren
+            </a>
+          <?php endif; ?>
+        </div>
       </div>
+      <div class="repo-card-body">
+        <?php foreach (DEMO_BLOCKS as $block => $bm):
+          $qs = $demoCatalog[$block]['questions'] ?? [];
+          $isOpen = demo_block_is_open($block);
+        ?>
+          <div class="demo-block">
+            <div class="dh">
+              <span class="cpill <?= $isOpen ? 'cyan' : ($bm['in_total'] ? 'blue' : 'amber') ?>">Blok <?= (int)$block ?></span>
+              <strong><?= h($bm['title']) ?></strong>
+              <?php if ($isOpen): ?>
+                <span style="color:var(--muted);font-size:12px;">· open tekst</span>
+              <?php elseif (!$bm['in_total']): ?>
+                <span style="color:var(--muted);font-size:12px;">· risico-indicator</span>
+              <?php endif; ?>
+              <span style="margin-left:auto;color:var(--muted);font-size:12px;"><?= count($qs) ?> vragen</span>
+            </div>
+            <p style="margin:0;color:var(--muted);font-size:12.5px;"><?= h($bm['subtitle']) ?></p>
+            <?php if (!$qs): ?>
+              <p style="margin:6px 0 0;color:var(--muted);font-size:12.5px;font-style:italic;">Nog geen vragen in dit blok.</p>
+            <?php else: ?>
+              <ol>
+                <?php foreach ($qs as $q): ?><li><?= h($q['text']) ?></li><?php endforeach; ?>
+              </ol>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+
+    <?php elseif (!$current): ?>
+      <div class="repo-card-head"><span class="count">Geen data.</span></div>
+
+    <?php else: ?>
+      <?php $rowCount = count($current['subs']); ?>
+      <div class="repo-card-head">
+        <label class="repo-search">
+          <?= icon('search', 14) ?>
+          <input type="search" placeholder="Zoek op naam of bron…" oninput="trajStrFilter(this.value)">
+        </label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="count"><?= $rowCount ?> <?= $rowCount === 1 ? h($meta['singular']) : h($meta['plural']) ?></span>
+          <?php if ($canEdit): ?>
+            <button type="button" class="rb primary" onclick="trajSubOpen()"><?= icon('plus', 14) ?> Nieuw <?= h($meta['singular']) ?></button>
+          <?php endif; ?>
+        </div>
+      </div>
+      <div class="repo-card-body">
+        <table class="dt" id="traj-sub-table">
+          <colgroup>
+            <col>
+            <?php if ($isFunc): ?><col style="width:200px;"><?php endif; ?>
+            <col style="width:200px;">
+            <col style="width:140px;">
+            <col style="width:160px;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <?php if ($isFunc): ?><th>Applicatiesoort</th><?php endif; ?>
+              <th>Bron</th>
+              <th>Requirements</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if (!$current['subs']): ?>
+              <tr><td colspan="<?= $isFunc ? 5 : 4 ?>" class="empty">Nog geen <?= h($meta['plural']) ?> — voeg er één toe.</td></tr>
+            <?php else: foreach ($current['subs'] as $s):
+                $reqCount = (int)db_value(
+                    'SELECT COUNT(*) FROM requirements WHERE subcategorie_id = :s',
+                    [':s' => (int)$s['id']]
+                );
+            ?>
+              <tr data-search="<?= h(mb_strtolower(($s['name'] ?? '') . ' ' . ($s['bron'] ?? ''))) ?>">
+                <td>
+                  <span class="name"><?= h($s['name']) ?></span>
+                  <?php if (!empty($s['description'])): ?>
+                    <span class="itip" tabindex="0" aria-label="Beschrijving"><span class="itip-pop"><?= h($s['description']) ?></span></span>
+                  <?php endif; ?>
+                </td>
+                <?php if ($isFunc): ?>
+                  <td class="muted"><?= h((string)($s['app_name'] ?? '')) ?: '<span style="color:#cbd5e1;">—</span>' ?></td>
+                <?php endif; ?>
+                <td class="muted"><?= h((string)($s['bron'] ?? '')) ?: '<span style="color:#cbd5e1;">—</span>' ?></td>
+                <td><span class="cb <?= $reqCount ? 'green' : 'zero' ?>"><?= $reqCount ?></span></td>
+                <td style="text-align:right;white-space:nowrap;">
+                  <?php if ($canEdit): ?>
+                    <button type="button" class="rb sm ghost"
+                            data-id="<?= (int)$s['id'] ?>"
+                            data-name="<?= h($s['name']) ?>"
+                            data-bron="<?= h((string)($s['bron'] ?? '')) ?>"
+                            data-desc="<?= h((string)($s['description'] ?? '')) ?>"
+                            onclick="trajSubEdit(this)"><?= icon('edit', 12) ?> Bewerken</button>
+                    <form method="post" style="display:inline;"
+                          onsubmit="return confirm('<?= h(ucfirst($meta['singular'])) ?> &quot;<?= h(addslashes($s['name'])) ?>&quot; verwijderen?<?= $reqCount ? ' Dit kan alleen als er 0 requirements aan hangen.' : '' ?>');">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="action" value="subcat_delete">
+                      <input type="hidden" name="sub_id" value="<?= (int)$s['id'] ?>">
+                      <input type="hidden" name="tab" value="structuur">
+                      <input type="hidden" name="stab" value="<?= h($stab) ?>">
+                      <button type="submit" class="rb sm danger" title="Verwijderen" <?= $reqCount ? 'disabled' : '' ?>>
+                        <?= icon('trash', 12) ?>
+                      </button>
+                    </form>
+                  <?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; endif; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <?php if ($canEdit): ?>
+        <!-- Modal: create / update subcategorie -->
+        <div class="rmodal-bg" id="traj-sub-modal" onclick="if(event.target===this)trajSubClose()">
+          <div class="rmodal">
+            <h3 id="traj-sub-title">Nieuw <?= h($meta['singular']) ?></h3>
+            <form method="post" autocomplete="off">
+              <?= csrf_field() ?>
+              <input type="hidden" name="tab" value="structuur">
+              <input type="hidden" name="stab" value="<?= h($stab) ?>">
+              <input type="hidden" name="categorie_id" value="<?= (int)$current['id'] ?>">
+              <input type="hidden" name="action" id="traj-sub-action" value="subcat_add">
+              <input type="hidden" name="sub_id" id="traj-sub-id" value="">
+              <label class="fl">Naam</label>
+              <input type="text" class="fi" name="name" id="traj-sub-name" required maxlength="200" autofocus>
+              <label class="fl">Beschrijving <span style="text-transform:none;font-weight:500;color:var(--muted);">(optioneel)</span></label>
+              <textarea class="fta" name="description" id="traj-sub-desc" rows="3" maxlength="2000"></textarea>
+              <label class="fl">Bron <span style="text-transform:none;font-weight:500;color:var(--muted);">(optioneel)</span></label>
+              <input type="text" class="fi" name="bron" id="traj-sub-bron" maxlength="190">
+              <div class="actions">
+                <button type="button" class="rb ghost" onclick="trajSubClose()">Annuleren</button>
+                <button type="submit" class="rb primary" id="traj-sub-submit">Aanmaken</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <script>
+        (function(){
+          const m = document.getElementById('traj-sub-modal');
+          const sing = <?= json_encode($meta['singular']) ?>;
+          window.trajSubOpen = function(){
+            document.getElementById('traj-sub-title').textContent = 'Nieuw ' + sing;
+            document.getElementById('traj-sub-action').value = 'subcat_add';
+            document.getElementById('traj-sub-id').value = '';
+            document.getElementById('traj-sub-name').value = '';
+            document.getElementById('traj-sub-desc').value = '';
+            document.getElementById('traj-sub-bron').value = '';
+            document.getElementById('traj-sub-submit').textContent = 'Aanmaken';
+            m && m.classList.add('open');
+          };
+          window.trajSubEdit = function(btn){
+            document.getElementById('traj-sub-title').textContent = sing.charAt(0).toUpperCase()+sing.slice(1)+' bewerken';
+            document.getElementById('traj-sub-action').value = 'subcat_update';
+            document.getElementById('traj-sub-id').value = btn.dataset.id;
+            document.getElementById('traj-sub-name').value = btn.dataset.name;
+            document.getElementById('traj-sub-desc').value = btn.dataset.desc || '';
+            document.getElementById('traj-sub-bron').value = btn.dataset.bron || '';
+            document.getElementById('traj-sub-submit').textContent = 'Opslaan';
+            m && m.classList.add('open');
+          };
+          window.trajSubClose = function(){ m && m.classList.remove('open'); };
+          window.trajStrFilter = function(q){
+            q = (q||'').toLowerCase().trim();
+            document.querySelectorAll('#traj-sub-table tbody tr').forEach(tr => {
+              const s = tr.dataset.search || '';
+              tr.style.display = (!q || s.indexOf(q) !== -1) ? '' : 'none';
+            });
+          };
+          document.addEventListener('keydown', function(e){
+            if (e.key === 'Escape' && m) m.classList.remove('open');
+          });
+        })();
+        </script>
+      <?php endif; ?>
     <?php endif; ?>
-  </div>
+  </div><!-- /.repo-card -->
+</div><!-- /.repo-screen -->
 <?php }
 
 function render_tab_scoring(

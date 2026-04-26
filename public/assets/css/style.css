@@ -4,9 +4,9 @@
 ================================================================ */
 
 :root {
-  /* Primary palette — vibrant sky-500 als action color, teal-700 hover */
-  --pri:       #0ea5e9;
-  --pri-h:     #0891b2;
+  /* Primary palette — Digilance teal-600 als action color, teal-700 hover */
+  --pri:       #0891b2;
+  --pri-h:     #0e7490;
   --pri-50:    #ecfeff;
   --pri-100:   #cffafe;
 
@@ -177,7 +177,7 @@ button { font-family: inherit; }
 .sidebar-nav a.active { color: #fff; background: rgba(255,255,255,.1); }
 .s-badge {
   margin-left: auto;
-  background: rgba(14,165,233,.7);
+  background: rgba(8,145,178,.7);
   color: #fff;
   font-size: 10px; font-weight: 700;
   padding: 1px 6px; border-radius: 20px;
@@ -339,7 +339,7 @@ button { font-family: inherit; }
   transition: all .14s;
   white-space: nowrap;
 }
-.btn:hover  { background: var(--pri-h); color:#fff; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(14,165,233,.35); }
+.btn:hover  { background: var(--pri-h); color:#fff; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(8,145,178,.35); }
 .btn:active { transform: translateY(0); }
 .btn:disabled, .btn[disabled] { opacity: .55; cursor: not-allowed; transform:none; box-shadow:none; }
 .btn svg { width: 14px; height: 14px; }
@@ -419,7 +419,7 @@ label.field select:focus,
 label.field textarea:focus,
 .input:focus, .fi:focus, .fta:focus, .fsel:focus {
   border-color: var(--pri);
-  box-shadow: 0 0 0 3px rgba(14,165,233,.09);
+  box-shadow: 0 0 0 3px rgba(8,145,178,.09);
 }
 label.field textarea, .fta { min-height: 80px; resize: vertical; }
 
@@ -474,12 +474,12 @@ label.field input[type="file"]::file-selector-button:hover {
   font-size: 13.5px;
   background: #fff; outline: none; transition: border-color .13s;
 }
-.search input:focus { border-color: var(--pri); box-shadow: 0 0 0 3px rgba(14,165,233,.09); }
+.search input:focus { border-color: var(--pri); box-shadow: 0 0 0 3px rgba(8,145,178,.09); }
 
 .sinp-w { flex:1; position:relative; min-width:200px; }
 .sinp-w svg { position:absolute; left:11px; top:50%; transform:translateY(-50%); width:14px; height:14px; color:var(--muted); }
 .sinp { width:100%; padding:9px 12px 9px 34px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:13.5px; outline:none; transition:border-color .13s; background:#fff; }
-.sinp:focus { border-color:var(--pri); box-shadow:0 0 0 3px rgba(14,165,233,.09); }
+.sinp:focus { border-color:var(--pri); box-shadow:0 0 0 3px rgba(8,145,178,.09); }
 
 .sbar { display:flex; gap:10px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
 
@@ -495,7 +495,7 @@ label.field input[type="file"]::file-selector-button:hover {
   background: var(--gray-100);
   color: var(--gray-600);
 }
-.badge.indigo  { background: rgba(14,165,233,.12); color: var(--pri); }
+.badge.indigo  { background: rgba(8,145,178,.12); color: var(--pri); }
 .badge.green,
 .badge.b-actief   { background: #dcfce7; color: #15803d; }
 .badge.red     { background: #fee2e2; color: #b91c1c; }
@@ -510,7 +510,7 @@ label.field input[type="file"]::file-selector-button:hover {
 
 /* Rol-specifiek */
 .role-admin      { background: #fee2e2; color: #b91c1c; }
-.role-architect  { background: rgba(14,165,233,.12); color: var(--pri); }
+.role-architect  { background: rgba(8,145,178,.12); color: var(--pri); }
 .role-key_user   { background: #dbeafe; color: #1d4ed8; }
 .role-management { background: #fef3c7; color: #92400e; }
 
@@ -891,13 +891,13 @@ input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 16px; height: 16px; border-radius: 50%;
   background: var(--pri); cursor: pointer; border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(14,165,233,.4);
+  box-shadow: 0 1px 4px rgba(8,145,178,.4);
   margin-top: -5px;
 }
 input[type=range]::-moz-range-thumb {
   width: 16px; height: 16px; border-radius: 50%;
   background: var(--pri); cursor: pointer; border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(14,165,233,.4);
+  box-shadow: 0 1px 4px rgba(8,145,178,.4);
 }
 .wpct { width: 44px; text-align: right; font-size: 13px; font-weight: 700; color: var(--pri); }
 

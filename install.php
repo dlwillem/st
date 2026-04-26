@@ -6,7 +6,7 @@
  *   1. Er bestaat nog géén actieve admin in de users-tabel
  *   2. settings.installed_at is nog niet gezet
  *
- * Stappen: DB → schema → admin → branding → mail → klaar.
+ * Stappen: DB → schema → seed-data → admin → branding → mail → klaar.
  *
  * Na succesvolle installatie: VERWIJDER install.php en sql/ van de host.
  * De locks hierboven beschermen ook als dat vergeten wordt, maar verwijderen
@@ -161,8 +161,15 @@ if ($alreadyInstalled || $hasAdmin) {
 }
 
 // ── Router ─────────────────────────────────────────────────────────────
+// Speciale GET-action: download lege demo-template (vóór step-router).
+if (($_GET['action'] ?? '') === 'demo_template_download') {
+    wiz_bootstrap_db();
+    require_once APP_ROOT . '/includes/demo_seed.php';
+    demo_template_xlsx('demo-template.xlsx');
+}
+
 $step = (int)($_GET['step'] ?? $_POST['step'] ?? 1);
-$step = max(1, min(6, $step));
+$step = max(1, min(7, $step));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -210,6 +217,32 @@ function wiz_handle_post(int $step): int {
     }
 
     if ($step === 3) {
+        $choice = $_POST['seed_choice'] ?? 'empty';
+        if (!in_array($choice, ['empty', 'seed', 'seed_demo'], true)) {
+            throw new RuntimeException('Ongeldige seed-keuze.');
+        }
+
+        if ($choice !== 'empty') {
+            $structPath = APP_ROOT . '/data/seed/structuur.xlsx';
+            if (!is_file($structPath)) {
+                throw new RuntimeException('Seed-Excel ontbreekt: data/seed/structuur.xlsx.');
+            }
+            wiz_bootstrap_db();
+            require_once APP_ROOT . '/includes/structure_import.php';
+            structure_import_xlsx($structPath);
+        }
+        if ($choice === 'seed_demo') {
+            $demoPath = APP_ROOT . '/data/seed/demo.xlsx';
+            if (!is_file($demoPath)) {
+                throw new RuntimeException('Demo-Excel ontbreekt: data/seed/demo.xlsx.');
+            }
+            require_once APP_ROOT . '/includes/demo_seed.php';
+            demo_import_xlsx($demoPath);
+        }
+        return 4;
+    }
+
+    if ($step === 4) {
         $pdo = wiz_try_pdo_from_env();
         if (!$pdo) throw new RuntimeException('DB-verbinding verloren.');
         $name  = trim($_POST['name'] ?? '');
@@ -221,20 +254,20 @@ function wiz_handle_post(int $step): int {
         $st = $pdo->prepare("INSERT INTO users (name, email, password_hash, role, active, created_at)
                              VALUES (:n,:e,:p,'architect',1,NOW())");
         $st->execute([':n'=>$name, ':e'=>$email, ':p'=>$hash]);
-        return 4;
+        return 5;
     }
 
-    if ($step === 4) {
+    if ($step === 5) {
         $pdo = wiz_try_pdo_from_env();
         $app = trim($_POST['app_name'] ?? '');
         $co  = trim($_POST['company_name'] ?? '');
         if ($app === '') throw new RuntimeException('App-naam is verplicht.');
         wiz_set_setting($pdo, 'app_name', $app);
         wiz_set_setting($pdo, 'company_name', $co);
-        return 5;
+        return 6;
     }
 
-    if ($step === 5) {
+    if ($step === 6) {
         $pdo = wiz_try_pdo_from_env();
         $driver = ($_POST['mail_driver'] ?? 'log') === 'smtp' ? 'smtp' : 'log';
         wiz_set_setting($pdo, 'mail_driver', $driver);
@@ -250,17 +283,30 @@ function wiz_handle_post(int $step): int {
             if ($pw !== '') wiz_set_setting($pdo, 'smtp_pwd_enc', wiz_encrypt($pw));
         }
         wiz_set_setting($pdo, 'installed_at', date('c'));
-        return 6;
+        return 7;
     }
 
     return $step;
+}
+
+/**
+ * Bootstrap minimaal de db()-helper + db_functions zodat structure_import_xlsx
+ * en demo_import_xlsx kunnen draaien tijdens de wizard. Veilig om meerdere
+ * keren te roepen — config/db.php wordt door require_once geguard.
+ */
+function wiz_bootstrap_db(): void {
+    require_once APP_ROOT . '/config/db.php';
+    require_once APP_ROOT . '/includes/db_functions.php';
 }
 
 // ── Render ─────────────────────────────────────────────────────────────
 function wiz_render(int $step): string {
     $err = $_SESSION['wiz_error'] ?? null;
     unset($_SESSION['wiz_error']);
-    $titles = [1=>'Database',2=>'Schema',3=>'Admin-account',4=>'Branding',5=>'Mail',6=>'Klaar'];
+    $titles = [
+        1 => 'Database', 2 => 'Schema', 3 => 'Seed-data',
+        4 => 'Admin-account', 5 => 'Branding', 6 => 'Mail', 7 => 'Klaar',
+    ];
 
     $steps = '';
     foreach ($titles as $i => $t) {
@@ -293,23 +339,63 @@ function wiz_render(int $step): string {
             <p class="muted">We maken alle tabellen aan via <code>sql/schema.sql</code>. Dit is <strong>destructief</strong> als er al tabellen met dezelfde namen bestaan — ze worden opnieuw gemaakt alleen als ze nog niet bestaan (CREATE TABLE zonder IF NOT EXISTS faalt).</p>
             <button class="btn">Schema installeren →</button>
             <?php break;
-        case 3: ?>
-            <h2>3 · Eerste admin-account</h2>
+        case 3:
+            $hasStruct = is_file(APP_ROOT . '/data/seed/structuur.xlsx');
+            $hasDemo   = is_file(APP_ROOT . '/data/seed/demo.xlsx');
+            ?>
+            <h2>3 · Seed-data</h2>
+            <p class="muted">Kies waarmee de database wordt gevuld. Je kunt dit niet meer ongedaan maken zonder een wipe via Instellingen.</p>
+
+            <label style="font-weight:normal;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;margin:8px 0;">
+              <input type="radio" name="seed_choice" value="empty" checked style="width:auto;margin-top:3px;">
+              <span><strong>Lege database</strong><br>
+                <span class="muted small">Geen seed-data. Je beheert structuur later via Instellingen → Structuur.</span>
+              </span>
+            </label>
+
+            <label style="font-weight:normal;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;margin:8px 0;<?= $hasStruct ? '' : 'opacity:.55;' ?>">
+              <input type="radio" name="seed_choice" value="seed" <?= $hasStruct ? '' : 'disabled' ?> style="width:auto;margin-top:3px;">
+              <span><strong>Seed-data laden</strong><br>
+                <span class="muted small">Laadt de structuur (App soorten, App services, NFR/VEND/IMPL/SUP/LIC subcats, DEMO-vragen) uit <code>data/seed/structuur.xlsx</code>.</span>
+                <?php if (!$hasStruct): ?><br><span class="small" style="color:#991b1b;">Bestand ontbreekt: <code>data/seed/structuur.xlsx</code>.</span><?php endif; ?>
+              </span>
+            </label>
+
+            <label style="font-weight:normal;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;margin:8px 0;<?= ($hasStruct && $hasDemo) ? '' : 'opacity:.55;' ?>">
+              <input type="radio" name="seed_choice" value="seed_demo" <?= ($hasStruct && $hasDemo) ? '' : 'disabled' ?> style="width:auto;margin-top:3px;">
+              <span><strong>Seed-data + demo-data</strong><br>
+                <span class="muted small">Bovenstaande, plus voorbeeldtrajecten + leveranciers + requirements uit <code>data/seed/demo.xlsx</code>.</span>
+                <?php if (!$hasStruct): ?><br><span class="small" style="color:#991b1b;">Eerst <code>data/seed/structuur.xlsx</code> nodig.</span>
+                <?php elseif (!$hasDemo): ?><br><span class="small" style="color:#991b1b;">Bestand ontbreekt: <code>data/seed/demo.xlsx</code>.</span>
+                <?php endif; ?>
+              </span>
+            </label>
+
+            <p class="muted small" style="margin-top:14px;">
+              Een lege demo-template kun je nu downloaden om in te vullen voordat je deze stap voltooit:
+              <a href="install.php?action=demo_template_download">demo-template.xlsx</a>.
+              Plaats 'm daarna als <code>data/seed/demo.xlsx</code> en herlaad deze pagina.
+            </p>
+
+            <button class="btn">Volgende →</button>
+            <?php break;
+        case 4: ?>
+            <h2>4 · Eerste admin-account</h2>
             <p class="muted">Deze gebruiker krijgt rol <code>architect</code> (volledige rechten).</p>
             <label>Naam <input name="name" required maxlength="150"></label>
             <label>E-mailadres <input type="email" name="email" required maxlength="190"></label>
             <label>Wachtwoord (min 12 tekens) <input type="password" name="password" required minlength="12"></label>
             <button class="btn">Account aanmaken →</button>
             <?php break;
-        case 4: ?>
-            <h2>4 · Branding</h2>
+        case 5: ?>
+            <h2>5 · Branding</h2>
             <label>App-naam <input name="app_name" value="Selectie Tool" required maxlength="100"></label>
             <label>Bedrijfsnaam <span class="muted">(optioneel)</span> <input name="company_name" maxlength="100"></label>
             <p class="muted small">Logo kun je later uploaden via Instellingen → Branding.</p>
             <button class="btn">Opslaan →</button>
             <?php break;
-        case 5: ?>
-            <h2>5 · Mail</h2>
+        case 6: ?>
+            <h2>6 · Mail</h2>
             <p class="muted small">Kies <code>log</code> voor een droge installatie — berichten worden dan naar <code>logs/mail.log</code> geschreven. SMTP-instellingen kun je altijd later aanvullen.</p>
             <label>Driver
               <select name="mail_driver" onchange="document.getElementById('smtp').style.display=this.value==='smtp'?'':'none'">
@@ -334,7 +420,7 @@ function wiz_render(int $step): string {
             </div>
             <button class="btn">Installatie afronden →</button>
             <?php break;
-        case 6: ?>
+        case 7: ?>
             <h2>✔ Klaar — installatie succesvol</h2>
             <div class="done-cleanup">
               <strong>⚠ Belangrijk — verwijder nu van de host:</strong>

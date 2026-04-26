@@ -847,6 +847,7 @@ Eindscore                         <strong>3.67</strong>  →  67 / 100</pre>
           'FUNC' => ['bg' => '#eff6ff', 'pill_bg' => '#dbeafe', 'pill_fg' => '#1d4ed8'],
           'NFR'  => ['bg' => '#fef3c7', 'pill_bg' => '#fde68a', 'pill_fg' => '#92400e'],
           'VEND' => ['bg' => '#ecfdf5', 'pill_bg' => '#a7f3d0', 'pill_fg' => '#047857'],
+          'IMPL' => ['bg' => '#ecfeff', 'pill_bg' => '#a5f3fc', 'pill_fg' => '#0e7490'],
           'LIC'  => ['bg' => '#fef2f2', 'pill_bg' => '#fecaca', 'pill_fg' => '#b91c1c'],
           'SUP'  => ['bg' => '#f5f3ff', 'pill_bg' => '#ddd6fe', 'pill_fg' => '#6d28d9'],
         ];
