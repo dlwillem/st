@@ -117,11 +117,8 @@ Een leverancier wordt **KO** gemarkeerd zodra minstens één deelnemer een
 
 ## Updates & deploy-workflow
 
-Deze repo wordt via **git** gedeployed. Volledige workflow (lokaal ↔ GitHub ↔
-SiteGround, inclusief 1Password-SSH-setup en troubleshooting) staat in
-[`DEPLOY.md`](DEPLOY.md).
-
-Korte samenvatting van een update-cyclus:
+Deze repo wordt via **git** gedeployed. Korte samenvatting van een
+update-cyclus:
 
 1. Lokaal wijzigen → commit + push (GitHub Desktop of `git push`).
 2. Op de server:
