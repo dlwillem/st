@@ -87,9 +87,9 @@ function role_capabilities(string $role): array {
 }
 
 /**
- * Rol-scoping: architect en management zien alle trajecten.
- * BA en key_user zien alleen trajecten waaraan ze zijn gekoppeld via
- * traject_deelnemers (match op e-mail).
+ * Rol-scoping: architect (= admin) ziet alle trajecten.
+ * Business owner, business analist en key_user zien alleen trajecten
+ * waaraan ze zijn gekoppeld via traject_deelnemers (match op e-mail).
  *
  * Retourneert een lijst traject-ID's, of null wanneer de gebruiker ongescoped
  * is (alles zien). Lege array = geen toegang tot enige traject.

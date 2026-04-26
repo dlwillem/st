@@ -17,11 +17,11 @@ $faqGroups = [
         ],
         [
             'q' => 'Voor wie is de tool?',
-            'a' => 'Interne rollen: architecten beheren de hele tool en alle trajecten, business owners stellen binnen hun eigen traject(en) requirements en leveranciers op en bepalen de weging, business analisten onderhouden requirements en scoren binnen toegewezen trajecten, en key-users krijgen read-only inzage plus de mogelijkheid om scores in te vullen. Leveranciers werken extern via een ingevuld Excel-bestand — zij hebben geen eigen login.',
+            'a' => 'Interne rollen: architecten (= admin) beheren de hele tool en alle trajecten, business owners stellen binnen hun eigen traject(en) requirements en leveranciers op en bepalen de weging, business analisten onderhouden requirements en scoren binnen toegewezen trajecten, en key-users krijgen read-only inzage plus de mogelijkheid om scores in te vullen. Leveranciers werken extern via een ingevuld Excel-bestand — zij hebben geen eigen login.',
         ],
         [
             'q' => 'Welke rollen zijn er en wat mogen ze?',
-            'a' => '<strong>Architect</strong>: super-user — volledige rechten op alle trajecten, inclusief gebruikersbeheer, Structuur stamdata, audit-trail, weging en scoring starten. <strong>Business owner</strong>: beheert — binnen de trajecten waaraan hij is gekoppeld — requirements, leveranciers en weging, en bekijkt rapportage; mag zelf scores invullen, maar start geen scoring-rondes en koppelt geen collega\'s. <strong>Business analist</strong>: binnen toegewezen trajecten requirements onderhouden, rapportage bekijken en scores invullen. <strong>Key-user</strong>: inzage (read-only) in toegewezen trajecten en scores invullen via een uitnodigingslink. De volledige autorisatiematrix staat live in Instellingen en wordt rechtstreeks uit de code gegenereerd.',
+            'a' => '<strong>Architect</strong> (tevens admin van de tool): super-user — volledige rechten op alle trajecten, inclusief gebruikersbeheer, Structuur stamdata, audit-trail, weging en scoring starten. Architect en admin zijn <em>dezelfde</em> rol; de tool kent geen aparte admin-rol. <strong>Business owner</strong>: beheert — binnen de trajecten waaraan hij is gekoppeld — requirements, leveranciers en weging, en bekijkt rapportage; mag zelf scores invullen, maar start geen scoring-rondes en koppelt geen collega\'s. <strong>Business analist</strong>: binnen toegewezen trajecten requirements onderhouden, rapportage bekijken en scores invullen. <strong>Key-user</strong>: inzage (read-only) in toegewezen trajecten en scores invullen via een uitnodigingslink. De volledige autorisatiematrix staat live in Instellingen en wordt rechtstreeks uit de code gegenereerd.',
         ],
         [
             'q' => 'Wat is een "traject"?',
@@ -43,7 +43,7 @@ $faqGroups = [
         ],
         [
             'q' => 'Kan ik requirements importeren uit Excel?',
-            'a' => 'Ja, rechtstreeks op de Requirements-pagina zelf via de knop "Uploaden" (naast "Exporteren"). Het formaat moet overeenkomen met de export: per scope een tabblad (FUNC/NFR/VEND/IMPL/SUP/LIC) met kolommen Nr, Domein, Titel, Omschrijving en MoSCoW. De upload doet strict all-or-nothing: alle regels slagen, of niets wordt weggeschreven. Validatie: hoofdcategorie + thema moeten bestaan in het traject, MoSCoW moet een geldige waarde zijn (MUST/SHOULD/KNOCK-OUT), en bij fouten krijg je tab + rijnummer terug. Zodra er al scores zijn ingevoerd is de upload gelocked — je ziet dan een 🔒 en de knop blokkeert om te voorkomen dat requirements onder beoordelaars wegveranderen.',
+            'a' => 'Ja, rechtstreeks op de Requirements-pagina zelf via de knop "Uploaden" (naast "Exporteren"). Het formaat moet overeenkomen met de export: per scope een tabblad (FUNC / NFR / VEND / IMPL / SUP / LIC). De FUNC-tab heeft kolommen <code>code, app_soort, subcategorie, titel, omschrijving, type</code>; de overige scope-tabs hebben <code>code, subcategorie, titel, omschrijving, type</code>. De <code>type</code>-kolom bevat <code>eis</code>, <code>wens</code> of <code>ko</code> (lowercase). De upload doet strict all-or-nothing: alle regels slagen, of niets wordt weggeschreven. Validatie: hoofdcategorie + subcategorie (en bij FUNC ook de app_soort) moeten bestaan in het traject; bij fouten krijg je tab + rijnummer terug. Zodra er al scores zijn ingevoerd is de upload gelocked — je ziet dan een 🔒 en de knop blokkeert om te voorkomen dat requirements onder beoordelaars wegveranderen.',
         ],
         [
             'q' => 'Wat zijn thema\'s?',
@@ -57,7 +57,7 @@ $faqGroups = [
         ],
         [
             'q' => 'Wat moet de leverancier invullen?',
-            'a' => 'Per requirement: kolom "Standaard" met verplicht één van de waarden <strong>Ja</strong>, <strong>Nee</strong> of <strong>Deels</strong>, en optioneel een Toelichting. Alleen de Standaard-kolom is verplicht; de Toelichting mag leeg blijven. Lege of ongeldige Standaard-waarden worden bij upload geweigerd met regel + tab in de foutmelding.',
+            'a' => 'Per requirement: kolom "Standaard" met verplicht één van de waarden <strong>Ja</strong>, <strong>Nee</strong>, <strong>Deels</strong> of <strong>N.v.t.</strong>, en optioneel een Toelichting. Alleen de Standaard-kolom is verplicht; de Toelichting mag leeg blijven. Lege of ongeldige Standaard-waarden worden bij upload geweigerd met regel + tab in de foutmelding. <em>N.v.t.</em>-regels worden niet meegenomen in de scoring.',
         ],
         [
             'q' => 'Hoe upload ik een ingevuld bestand?',
@@ -79,7 +79,7 @@ $faqGroups = [
         ],
         [
             'q' => 'Welke regels hanteert de auto-scoring?',
-            'a' => 'Ja zonder toelichting → hoogste score (5). Nee zonder toelichting → laagste score (1). Ja/Nee mét toelichting → handmatig beoordelen. Deels → altijd handmatig. N.v.t. → niet gescoord.',
+            'a' => 'Ja (volledig) zonder toelichting → hoogste score (5). Nee (niet) zonder toelichting → laagste score (1). Ja/Nee mét toelichting → handmatig beoordelen. Deels → altijd handmatig. N.v.t. → niet gescoord (telt niet mee in het gemiddelde).',
         ],
         [
             'q' => 'Wat is een "toelichting" precies?',
@@ -119,7 +119,7 @@ $faqGroups = [
         ],
         [
             'q' => 'Welke validaties zitten op de interne requirements-upload?',
-            'a' => 'Alleen <code>.xlsx</code> in het formaat van de export (per scope een tabblad met Nr / Domein / Titel / Omschrijving / MoSCoW); hoofdcategorie en thema (Domein) moeten bestaan in het traject — onbekende waarden worden geweigerd; MoSCoW moet geldig zijn (MUST / SHOULD / KNOCK-OUT); lege verplichte velden geven een fout met tab + rijnummer. De upload is <strong>strict all-or-nothing</strong>: één fout rolt alles terug. Als er al scores zijn ingevoerd is de upload gelocked om requirements niet onder beoordelaars te muteren.',
+            'a' => 'Alleen <code>.xlsx</code> in het formaat van de export (zes scope-tabs FUNC/NFR/VEND/IMPL/SUP/LIC). Per rij worden gecontroleerd: hoofdcategorie en subcategorie moeten in het traject bestaan; voor FUNC moet ook de <code>app_soort</code> aan het traject gekoppeld zijn; <code>type</code> moet <code>eis</code>, <code>wens</code> of <code>ko</code> zijn; verplichte velden mogen niet leeg zijn. Bij fouten krijg je tab + rijnummer terug. De upload is <strong>strict all-or-nothing</strong>: één fout rolt alles terug. Als er al scores zijn ingevoerd is de upload gelocked om requirements niet onder beoordelaars te muteren.',
         ],
         [
             'q' => 'Welke checks bij scoring?',
@@ -207,7 +207,11 @@ Eindscore                         <strong style="color:#67e8f9;">3.67</strong>  
     'Structuur stamdata' => [
         [
             'q' => 'Wat is de Structuur stamdata?',
-            'a' => 'Structuur stamdata is de centrale plek voor stamdata: hoofdcategorieën, applicatiesoorten (FUNC-templates), thema-templates voor NFR/VEND/IMPL/SUP/LIC, en de mastersets van requirements. Vanuit hier worden trajecten gevoed.',
+            'a' => 'Structuur stamdata is de centrale plek voor stamdata: applicatiesoorten (FUNC-templates), thema-templates voor NFR/VEND/IMPL/SUP/LIC, en de catalogus van DEMO-vragen. De zes hoofdcategorieën (FUNC/NFR/VEND/IMPL/SUP/LIC) zijn vast in de code. Stamdata wordt beheerd via één Excel met acht tabbladen (App soorten, App services, NFR, VEND, IMPL, SUP, LIC, DEMO-vragen) op <em>Instellingen → Structuur</em>: download de huidige set of een lege template, vul aan en upload terug. Een upload kan alleen op een lege structuur — gebruik eerst "Wipe" (alleen mogelijk wanneer er nog geen requirements en leveranciers zijn).',
+        ],
+        [
+            'q' => 'Wat zijn DEMO-vragen?',
+            'a' => 'DEMO-vragen zijn een centrale catalogus van vragen die beoordelaars stellen tijdens een leveranciersdemo, gegroepeerd in blokken (1..n). Ze worden via het tabblad <em>DEMO-vragen</em> in de Structuur stamdata-Excel beheerd en zijn beschikbaar voor alle trajecten waarin DEMO meeweegt.',
         ],
         [
             'q' => 'Wat zijn applicatiesoorten?',
@@ -231,7 +235,7 @@ Eindscore                         <strong style="color:#67e8f9;">3.67</strong>  
         ],
         [
             'q' => 'Wie mag de Structuur stamdata beheren?',
-            'a' => 'Alleen admin en architect. Key-users kunnen wel requirements binnen hun traject aanpassen, maar niet de mastersets of applicatiesoorten. Management heeft geen toegang tot de Structuur stamdata.',
+            'a' => 'Alleen architecten (= admin). Business owners en business analisten kunnen wel requirements binnen hun eigen trajecten aanpassen, maar niet de mastersets of applicatiesoorten. Key-users hebben geen toegang tot de Structuur stamdata.',
         ],
     ],
     'Technisch' => [

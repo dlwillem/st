@@ -1259,7 +1259,7 @@ function render_scoring_drilldown(
             </button>
           </form>
         <?php else: ?>
-          <p class="muted small">Alleen architect of management kan rondes aanmaken.</p>
+          <p class="muted small">Alleen een architect kan rondes aanmaken.</p>
         <?php endif; ?>
       </div>
       <?php return; ?>
