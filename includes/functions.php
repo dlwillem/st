@@ -192,6 +192,12 @@ function mail_config(): array {
     $secure   = setting_get('smtp_secure');   if ($secure   === '' && defined('SMTP_SECURE')) $secure = SMTP_SECURE;
     $pwdEnc   = setting_get('smtp_pwd_enc');
     $pwd      = $pwdEnc !== '' ? (crypto_decrypt($pwdEnc) ?? '') : (defined('SMTP_PASS') ? SMTP_PASS : '');
+    // Demo-mode: forceer 'log'-driver, ongeacht wat in DB/env staat.
+    // Voorkomt dat een tester per ongeluk echte mail verstuurt naar
+    // willekeurige e-mailadressen vanaf het SG-IP.
+    if (function_exists('is_demo_mode') && is_demo_mode()) {
+        $driver = 'log';
+    }
     return compact('driver','from','fromName','host','port','user','secure','pwd');
 }
 

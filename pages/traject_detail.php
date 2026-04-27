@@ -1314,6 +1314,13 @@ function render_scoring_drilldown(
 
     <!-- Beoordelaars -->
     <h3 style="margin:12px 0 6px;font-size:0.9375rem;">Beoordelaars</h3>
+    <?php if (is_demo_mode() && $deelnemers): ?>
+      <p class="muted small" style="margin:0 0 8px;background:#fff8db;border:1px solid #f1d97a;color:#5a4500;padding:6px 10px;border-radius:4px;">
+        <strong>Demo-tip:</strong> in deze omgeving worden geen e-mails verstuurd.
+        Gebruik de <em>Score namens</em>-knop (potlood-icoon) of kopieer de
+        scoring-link onder elke deelnemer om een ronde door te lopen.
+      </p>
+    <?php endif; ?>
     <?php if (!$deelnemers): ?>
       <p class="muted small" style="margin:0 0 10px;">Nog geen beoordelaars uitgenodigd.</p>
     <?php else: ?>
@@ -1326,7 +1333,21 @@ function render_scoring_drilldown(
           <tbody>
             <?php foreach ($deelnemers as $d): ?>
               <tr>
-                <td><?= h((string)$d['name']) ?></td>
+                <td>
+                  <?= h((string)$d['name']) ?>
+                  <?php if (is_demo_mode() && $canEdit && !$d['completed_at'] && $status === 'open'): ?>
+                    <?php $_demoUrl = APP_BASE_URL . '/pages/score.php?deelnemer_id=' . (int)$d['id'] . '&admin=1'; ?>
+                    <div style="margin-top:4px;display:flex;gap:4px;align-items:center;">
+                      <input type="text" readonly value="<?= h($_demoUrl) ?>"
+                             onclick="this.select();"
+                             style="font-size:0.6875rem;padding:2px 4px;width:260px;font-family:monospace;"
+                             title="Score-link (vereist architect-login in dezelfde browser)">
+                      <button type="button" class="btn sm ghost"
+                              onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='✓';setTimeout(()=>this.textContent='Kopieer',1500);"
+                              style="font-size:0.6875rem;padding:2px 6px;">Kopieer</button>
+                    </div>
+                  <?php endif; ?>
+                </td>
                 <td class="muted small"><?= h((string)$d['email']) ?></td>
                 <td class="muted small">
                   <?= h(date('d-m-Y', strtotime((string)$d['invited_at']))) ?>
