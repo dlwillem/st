@@ -17,6 +17,11 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 require_login();
 require_can('users.edit');
 
+if (is_demo_mode()) {
+    http_response_code(403);
+    exit('Schema-migraties zijn uitgeschakeld in de demo-omgeving.');
+}
+
 header('Content-Type: text/plain; charset=utf-8');
 
 $pdo  = db();

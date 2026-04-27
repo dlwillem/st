@@ -20,6 +20,10 @@ $me = current_user();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_require();
     $action = input_str('action');
+    if (is_demo_mode()) {
+        flash_set('error', 'Gebruikersbeheer is uitgeschakeld in de demo-omgeving.');
+        redirect('pages/instellingen.php');
+    }
     try {
         if ($action === 'save') {
             $active = input('active', '0') === '1';

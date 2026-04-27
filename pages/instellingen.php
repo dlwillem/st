@@ -19,6 +19,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && input_str('action') === 'structure_d
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_require();
     $action = input_str('action');
+    // Demo-mode: blokkeer destructieve / gevoelige acties server-side, ook al
+    // is de UI verborgen (defense in depth). Alleen onschadelijke read-only
+    // acties komen door — momenteel zijn alle settings-acties write, dus
+    // alles wordt geblokkeerd behalve niets.
+    $demoBlocked = [
+        'create', 'branding_save', 'branding_logo_upload', 'branding_logo_remove',
+        'branding_favicon_upload', 'branding_favicon_remove',
+        'mail_save', 'mail_test',
+        'structure_upload', 'structure_wipe',
+    ];
+    if (is_demo_mode() && in_array($action, $demoBlocked, true)) {
+        flash_set('error', 'Deze actie is uitgeschakeld in de demo-omgeving.');
+        redirect('pages/instellingen.php');
+    }
     try {
         if ($action === 'create') {
             user_create(
