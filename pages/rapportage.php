@@ -23,6 +23,15 @@ $traject = $trajectId ? db_one('SELECT * FROM trajecten WHERE id = :id', [':id' 
 
 $allTrajecten = db_all('SELECT id, name, status FROM trajecten ORDER BY name');
 
+// Auto-selecteer het eerste traject als er niets geselecteerd is
+if (!$traject && !empty($allTrajecten)) {
+    $trajectId = (int)$allTrajecten[0]['id'];
+    if (can_view_traject($trajectId)) {
+        set_current_traject($trajectId);
+        $traject = db_one('SELECT * FROM trajecten WHERE id = :id', [':id' => $trajectId]);
+    }
+}
+
 $pageTitle  = 'Rapportage' . ($traject ? ' — ' . $traject['name'] : '');
 $currentNav = 'rapportage';
 

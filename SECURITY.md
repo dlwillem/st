@@ -7,7 +7,7 @@ de moeite neemt het te melden.
 
 **Meld het privé**, niet via een GitHub issue of pull request:
 
-- **E-mail:** vul-hier-in@example.com
+- **E-mail:** willem@digilance-consulting.nl
 - Of via GitHub's *Private vulnerability reporting*: ga naar het
   [Security-tabblad](../../security/advisories/new) van deze repo en maak
   een advisory aan.
