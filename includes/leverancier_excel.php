@@ -543,7 +543,9 @@ function leverancier_excel_import(int $leverancierId, string $path): array {
     // Welke header-varianten accepteren we voor welk veld?
     $headerAliases = [
         'code'        => ['nr', 'no.', 'no', 'code', 'nfr nr', 'fr nr', 'vend nr', 'lic nr', 'sup nr', 'number'],
-        'standaard'   => ['standaard ja / nee', 'standaard ja/nee', 'standaard', 'antwoord',
+        'standaard'   => ['standaard ja / nee / deels', 'standaard ja/nee/deels',
+                          'standaard ja / nee', 'standaard ja/nee', 'standaard', 'antwoord',
+                          'standard yes / no / partial', 'standard yes/no/partial',
                           'standard yes / no', 'standard yes/no', 'standard', 'answer'],
         'toelichting' => ['toelichting', 'opmerking', 'notes', 'comments', 'comment', 'remarks'],
     ];
