@@ -455,11 +455,401 @@ function demo_import_xlsx(string $path): array {
         }
     });
 
-    return [
+    // ── Fase 4: scoring-data (optioneel — alleen als extra sheets aanwezig zijn) ──
+    $scoringResult = _demo_import_scoring($ss, $now);
+
+    return array_merge([
         'trajecten'    => $createdTraj,
         'leveranciers' => $createdLev,
         'requirements' => $createdReq,
+    ], $scoringResult);
+}
+
+/**
+ * Importeert scoring-data uit de optionele sheets van demo_compleet.xlsx:
+ *   Antwoorden_Alpha, Beoordelaars, Scores, Demo_Scores, Demo_Open
+ *
+ * Werkt altijd op "Leverancier Alpha" in het eerste gevonden traject.
+ * Wordt overgeslagen als de sheets ontbreken (achterwaarts compatibel met demo_beperkt).
+ *
+ * @return array{antwoorden?:int, rondes?:int, scores?:int, demo_scores?:int, skipped?:bool}
+ */
+function _demo_import_scoring(Spreadsheet $ss, string $now): array {
+    // Alleen uitvoeren als alle scoring-sheets aanwezig zijn
+    $needed = ['Antwoorden_Alpha', 'Beoordelaars', 'Scores', 'Demo_Scores', 'Demo_Open'];
+    foreach ($needed as $sn) {
+        if ($ss->getSheetByName($sn) === null) {
+            return ['skipped' => true];
+        }
+    }
+
+    // ── Zoek Leverancier Alpha + traject ────────────────────────────────────
+    $levRow = db_one(
+        "SELECT l.id, l.traject_id
+           FROM leveranciers l
+          WHERE l.name = 'Leverancier Alpha'
+          ORDER BY l.id ASC LIMIT 1"
+    );
+    if (!$levRow) {
+        return ['skipped' => true, 'reason' => 'Leverancier Alpha niet gevonden in DB'];
+    }
+    $levId  = (int)$levRow['id'];
+    $trajId = (int)$levRow['traject_id'];
+
+    // ── Requirements opzoeken per code ──────────────────────────────────────
+    $reqByCode = [];
+    foreach (db_all('SELECT id, code FROM requirements WHERE traject_id = :t', [':t' => $trajId]) as $r) {
+        $reqByCode[trim((string)$r['code'])] = (int)$r['id'];
+    }
+
+    // ── Lees de sheets als ruwe rijen ────────────────────────────────────────
+    $antwoordRows  = _demo_read_rows($ss->getSheetByName('Antwoorden_Alpha'), 1);  // 1 header-rij
+    $beoordelaarsRows = _demo_read_rows($ss->getSheetByName('Beoordelaars'), 1);
+    $scoresRows    = _demo_read_rows($ss->getSheetByName('Scores'), 1);
+    $demoScoresRows = _demo_read_rows($ss->getSheetByName('Demo_Scores'), 1);
+    $demoOpenRows  = _demo_read_rows($ss->getSheetByName('Demo_Open'), 1);
+
+    // Antwoord-mapping (Excel → DB enum)
+    $choiceMap = ['Ja' => 'volledig', 'Deels' => 'deels', 'Nee' => 'niet'];
+
+    $nAntw = 0; $nScores = 0; $nDemoScores = 0; $nDemoOpen = 0;
+
+    db_transaction(function () use (
+        $levId, $trajId, $now,
+        $reqByCode, $choiceMap,
+        $antwoordRows, $beoordelaarsRows, $scoresRows, $demoScoresRows, $demoOpenRows,
+        &$nAntw, &$nScores, &$nDemoScores, &$nDemoOpen
+    ) {
+        // ── 1) Leverancier-antwoorden ────────────────────────────────────────
+        // Cols: 0=Nr, 1=Scope, 2=Domein, 3=Titel, 4=MoSCoW, 5=Antwoord, 6=Toelichting
+        foreach ($antwoordRows as $row) {
+            $code   = trim((string)($row[0] ?? ''));
+            $antw   = trim((string)($row[5] ?? ''));
+            $toel   = trim((string)($row[6] ?? ''));
+            $reqId  = $reqByCode[$code] ?? null;
+            if (!$reqId || !isset($choiceMap[$antw])) continue;
+
+            $choice  = $choiceMap[$antw];
+            $ansText = ($toel !== '' && strtolower($toel) !== 'nan') ? $toel : null;
+
+            // Upsert — rij kan al bestaan als seeder herhaald wordt
+            $exists = db_value(
+                'SELECT id FROM leverancier_answers WHERE leverancier_id = :l AND requirement_id = :r',
+                [':l' => $levId, ':r' => $reqId]
+            );
+            if ($exists) continue;
+
+            db_insert('leverancier_answers', [
+                'traject_id'    => $trajId,
+                'leverancier_id'=> $levId,
+                'requirement_id'=> $reqId,
+                'answer_choice' => $choice,
+                'answer_text'   => $ansText,
+                'evidence_url'  => null,
+                'imported_at'   => $now,
+                'updated_at'    => $now,
+            ]);
+            $nAntw++;
+        }
+
+        // Dummy upload-record zodat de Antwoorden-pagina het bestand kan tonen
+        $hasUpload = db_value('SELECT id FROM leverancier_uploads WHERE leverancier_id = :l', [':l' => $levId]);
+        if (!$hasUpload) {
+            db_insert('leverancier_uploads', [
+                'traject_id'     => $trajId,
+                'leverancier_id' => $levId,
+                'original_name'  => 'requirements_ERP-selectie_demo_Leverancier_Alpha_ingevuld.xlsx',
+                'stored_path'    => 'demo_seed',
+                'uploaded_by'    => null,
+                'uploaded_at'    => $now,
+                'rows_total'     => $nAntw,
+                'rows_auto'      => 0,
+                'rows_manual'    => 0,
+                'rows_ko_fail'   => 0,
+            ]);
+        }
+
+        // ── 2) Demo-vragenlijst kopiëren naar dit traject ────────────────────
+        $haveDemoQ = (int)db_value(
+            'SELECT COUNT(*) FROM traject_demo_questions WHERE traject_id = :t',
+            [':t' => $trajId]
+        );
+        if ($haveDemoQ === 0) {
+            $masterQ = db_all(
+                'SELECT id, block, sort_order, text, active FROM demo_question_catalog ORDER BY block, sort_order, id'
+            );
+            foreach ($masterQ as $mq) {
+                db_insert('traject_demo_questions', [
+                    'traject_id'        => $trajId,
+                    'block'             => (int)$mq['block'],
+                    'sort_order'        => (int)$mq['sort_order'],
+                    'text'              => (string)$mq['text'],
+                    'active'            => (int)$mq['active'],
+                    'source_catalog_id' => (int)$mq['id'],
+                    'created_at'        => $now,
+                    'updated_at'        => $now,
+                ]);
+            }
+        }
+
+        // Demo-vragen per tekst opzoeken (voor matching met Demo_Scores sheet)
+        $tdqByText = [];
+        foreach (db_all(
+            'SELECT id, block, text FROM traject_demo_questions WHERE traject_id = :t AND active = 1',
+            [':t' => $trajId]
+        ) as $q) {
+            $tdqByText[trim((string)$q['text'])] = ['id' => (int)$q['id'], 'block' => (int)$q['block']];
+        }
+
+        // ── 3) Beoordelaars inlezen ──────────────────────────────────────────
+        // Cols: 0=Naam, 1=E-mail, 2=Rol, 3=Organisatie, 4=Opmerking
+        $beoordelaars = [];
+        foreach ($beoordelaarsRows as $row) {
+            $naam  = trim((string)($row[0] ?? ''));
+            $email = trim((string)($row[1] ?? ''));
+            if ($naam === '' || $email === '') continue;
+            $beoordelaars[] = ['name' => $naam, 'email' => $email];
+        }
+        if (empty($beoordelaars)) return;
+
+        // ── 4) Scoring-rondes per scope aanmaken ─────────────────────────────
+        // Scores sheet cols: 0=Nr, 1=Scope, ..., 6-10=scores per beoordelaar (zelfde volgorde)
+        $scopes = ['FUNC', 'NFR', 'VEND', 'IMPL', 'SUP', 'LIC'];
+        $rondeIds = []; // scope → ronde_id
+        $deelnemerIds = []; // scope → [index → deelnemer_id]
+
+        $tokenExpiry = date('Y-m-d H:i:s', strtotime('+10 years', strtotime($now)));
+
+        foreach ($scopes as $scope) {
+            // Ronde aanmaken (of bestaande hergebruiken)
+            $rondeId = (int)(db_value(
+                'SELECT id FROM scoring_rondes WHERE traject_id = :t AND leverancier_id = :l AND scope = :s',
+                [':t' => $trajId, ':l' => $levId, ':s' => $scope]
+            ) ?: 0);
+
+            if (!$rondeId) {
+                $rondeId = db_insert('scoring_rondes', [
+                    'traject_id'     => $trajId,
+                    'leverancier_id' => $levId,
+                    'scope'          => $scope,
+                    'name'           => $scope . '-ronde',
+                    'description'    => null,
+                    'start_date'     => '2026-02-01',
+                    'end_date'       => '2026-03-15',
+                    'status'         => 'gesloten',
+                    'closed_at'      => $now,
+                    'closed_by'      => null,
+                    'created_by'     => null,
+                    'created_at'     => $now,
+                ]);
+            }
+            $rondeIds[$scope] = $rondeId;
+
+            // Deelnemers aanmaken voor deze ronde
+            $deelnemerIds[$scope] = [];
+            foreach ($beoordelaars as $idx => $beo) {
+                $existing = db_value(
+                    'SELECT id FROM scoring_deelnemers WHERE ronde_id = :r AND email = :e',
+                    [':r' => $rondeId, ':e' => $beo['email']]
+                );
+                if ($existing) {
+                    $deelnemerIds[$scope][$idx] = (int)$existing;
+                    continue;
+                }
+                $deelnemerIds[$scope][$idx] = db_insert('scoring_deelnemers', [
+                    'ronde_id'             => $rondeId,
+                    'leverancier_id'       => $levId,
+                    'traject_deelnemer_id' => null,
+                    'name'                 => $beo['name'],
+                    'email'                => $beo['email'],
+                    'token'                => bin2hex(random_bytes(32)),
+                    'token_expires'        => $tokenExpiry,
+                    'invited_at'           => $now,
+                    'completed_at'         => $now,
+                ]);
+            }
+        }
+
+        // ── 5) Requirement-scores inserten ───────────────────────────────────
+        // Cols: 0=Nr, 1=Scope, 6=Emma, 7=Lucas, 8=Nathalie, 9=David, 10=Sophie
+        foreach ($scoresRows as $row) {
+            $code  = trim((string)($row[0] ?? ''));
+            $scope = strtoupper(trim((string)($row[1] ?? '')));
+            $reqId = $reqByCode[$code] ?? null;
+            if (!$reqId || !isset($rondeIds[$scope])) continue;
+
+            $rondeId = $rondeIds[$scope];
+
+            foreach ($beoordelaars as $idx => $beo) {
+                $scoreVal = (int)($row[6 + $idx] ?? 0);
+                if ($scoreVal < 1 || $scoreVal > 5) continue;
+
+                $deelnemerId = $deelnemerIds[$scope][$idx] ?? null;
+                if (!$deelnemerId) continue;
+
+                $exists = db_value(
+                    'SELECT id FROM scores
+                      WHERE ronde_id = :r AND leverancier_id = :l
+                        AND requirement_id = :q AND deelnemer_id = :d',
+                    [':r' => $rondeId, ':l' => $levId, ':q' => $reqId, ':d' => $deelnemerId]
+                );
+                if ($exists) continue;
+
+                db_insert('scores', [
+                    'ronde_id'       => $rondeId,
+                    'leverancier_id' => $levId,
+                    'requirement_id' => $reqId,
+                    'deelnemer_id'   => $deelnemerId,
+                    'score'          => $scoreVal,
+                    'notes'          => null,
+                    'source'         => 'manual',
+                    'created_at'     => $now,
+                    'updated_at'     => $now,
+                ]);
+                $nScores++;
+            }
+        }
+
+        // ── 6) DEMO-ronde aanmaken ───────────────────────────────────────────
+        $demoRondeId = (int)(db_value(
+            "SELECT id FROM scoring_rondes
+              WHERE traject_id = :t AND leverancier_id = :l AND scope = 'DEMO'",
+            [':t' => $trajId, ':l' => $levId]
+        ) ?: 0);
+
+        if (!$demoRondeId) {
+            $demoRondeId = db_insert('scoring_rondes', [
+                'traject_id'     => $trajId,
+                'leverancier_id' => $levId,
+                'scope'          => 'DEMO',
+                'name'           => 'DEMO-ronde',
+                'description'    => null,
+                'start_date'     => '2026-03-01',
+                'end_date'       => '2026-03-01',
+                'status'         => 'gesloten',
+                'closed_at'      => $now,
+                'closed_by'      => null,
+                'created_by'     => null,
+                'created_at'     => $now,
+            ]);
+        }
+
+        // Deelnemers voor DEMO-ronde
+        $demoDeelnemerIds = [];
+        foreach ($beoordelaars as $idx => $beo) {
+            $existing = db_value(
+                'SELECT id FROM scoring_deelnemers WHERE ronde_id = :r AND email = :e',
+                [':r' => $demoRondeId, ':e' => $beo['email']]
+            );
+            if ($existing) {
+                $demoDeelnemerIds[$idx] = (int)$existing;
+                continue;
+            }
+            $demoDeelnemerIds[$idx] = db_insert('scoring_deelnemers', [
+                'ronde_id'             => $demoRondeId,
+                'leverancier_id'       => $levId,
+                'traject_deelnemer_id' => null,
+                'name'                 => $beo['name'],
+                'email'                => $beo['email'],
+                'token'                => bin2hex(random_bytes(32)),
+                'token_expires'        => $tokenExpiry,
+                'invited_at'           => $now,
+                'completed_at'         => $now,
+            ]);
+        }
+
+        // ── 7) Demo-scores (blokken 1–4) ────────────────────────────────────
+        // Cols: 0=Blok, 1=Blok naam, 2=Telt mee, 3=#, 4=Vraag, 5-9=scores per beoordelaar
+        foreach ($demoScoresRows as $row) {
+            $vraagTekst = trim((string)($row[4] ?? ''));
+            if ($vraagTekst === '') continue;
+            $tdq = $tdqByText[$vraagTekst] ?? null;
+            if (!$tdq) continue; // vraag niet gevonden in traject-kopie
+
+            foreach ($beoordelaars as $idx => $beo) {
+                $scoreVal = (int)($row[5 + $idx] ?? 0);
+                if ($scoreVal < 1 || $scoreVal > 5) continue;
+
+                $deelnemerId = $demoDeelnemerIds[$idx] ?? null;
+                if (!$deelnemerId) continue;
+
+                $exists = db_value(
+                    'SELECT id FROM demo_scores WHERE ronde_id = :r AND question_id = :q AND deelnemer_id = :d',
+                    [':r' => $demoRondeId, ':q' => $tdq['id'], ':d' => $deelnemerId]
+                );
+                if ($exists) continue;
+
+                db_insert('demo_scores', [
+                    'ronde_id'     => $demoRondeId,
+                    'question_id'  => $tdq['id'],
+                    'deelnemer_id' => $deelnemerId,
+                    'score'        => $scoreVal,
+                    'created_at'   => $now,
+                    'updated_at'   => $now,
+                ]);
+                $nDemoScores++;
+            }
+        }
+
+        // ── 8) Demo open antwoorden (blok 5) ────────────────────────────────
+        // Cols: 0=#, 1=Vraag, 2-6=antwoorden per beoordelaar
+        foreach ($demoOpenRows as $row) {
+            $vraagTekst = trim((string)($row[1] ?? ''));
+            if ($vraagTekst === '') continue;
+            $tdq = $tdqByText[$vraagTekst] ?? null;
+            if (!$tdq) continue;
+
+            foreach ($beoordelaars as $idx => $beo) {
+                $antwoord = trim((string)($row[2 + $idx] ?? ''));
+                if ($antwoord === '' || strtolower($antwoord) === 'nan') continue;
+
+                $deelnemerId = $demoDeelnemerIds[$idx] ?? null;
+                if (!$deelnemerId) continue;
+
+                $exists = db_value(
+                    'SELECT id FROM demo_open_scores WHERE ronde_id = :r AND question_id = :q AND deelnemer_id = :d',
+                    [':r' => $demoRondeId, ':q' => $tdq['id'], ':d' => $deelnemerId]
+                );
+                if ($exists) continue;
+
+                db_insert('demo_open_scores', [
+                    'ronde_id'     => $demoRondeId,
+                    'question_id'  => $tdq['id'],
+                    'deelnemer_id' => $deelnemerId,
+                    'answer_text'  => $antwoord,
+                    'created_at'   => $now,
+                    'updated_at'   => $now,
+                ]);
+                $nDemoOpen++;
+            }
+        }
+    });
+
+    return [
+        'antwoorden'  => $nAntw,
+        'rondes'      => 7,   // 6 scope + 1 DEMO
+        'scores'      => $nScores,
+        'demo_scores' => $nDemoScores,
+        'demo_open'   => $nDemoOpen,
     ];
+}
+
+/**
+ * Leest alle datarijen van een sheet als genummerde arrays (0-based kolom-index).
+ * Slaat de eerste $headerRows rijen over en lege rijen.
+ */
+function _demo_read_rows($sheet, int $headerRows = 1): array {
+    $all = $sheet->toArray(null, true, true, false);
+    $out = [];
+    for ($i = $headerRows; $i < count($all); $i++) {
+        $row = $all[$i];
+        $empty = true;
+        foreach ($row as $v) {
+            if (trim((string)$v) !== '') { $empty = false; break; }
+        }
+        if (!$empty) $out[] = $row;
+    }
+    return $out;
 }
 
 function _demo_split_list(string $s): array {

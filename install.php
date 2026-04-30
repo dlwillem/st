@@ -245,7 +245,8 @@ function wiz_handle_post(int $step): int {
                 throw new RuntimeException('Demo-Excel ontbreekt: data/seed/demo_compleet.xlsx.');
             }
             require_once APP_ROOT . '/includes/demo_seed.php';
-            demo_import_xlsx($demoPath);
+            $demoResult = demo_import_xlsx($demoPath);
+            $_SESSION['wiz_demo_result'] = $demoResult;
         }
         return 4;
     }
@@ -387,7 +388,21 @@ function wiz_render(int $step): string {
 
             <button class="btn">Volgende →</button>
             <?php break;
-        case 4: ?>
+        case 4:
+            $demoRes = $_SESSION['wiz_demo_result'] ?? null;
+            unset($_SESSION['wiz_demo_result']);
+            ?>
+            <?php if ($demoRes && empty($demoRes['skipped'])): ?>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#166534;">
+              <strong>✓ Demo-data geladen</strong> —
+              <?= (int)($demoRes['trajecten']??0) ?> traject,
+              <?= (int)($demoRes['leveranciers']??0) ?> leveranciers,
+              <?= (int)($demoRes['requirements']??0) ?> requirements,
+              <?= (int)($demoRes['antwoorden']??0) ?> antwoorden,
+              <?= (int)($demoRes['scores']??0) ?> scores (<?= (int)($demoRes['rondes']??0) ?> rondes),
+              <?= (int)($demoRes['demo_scores']??0) ?> demo-scores.
+            </div>
+            <?php endif; ?>
             <h2>4 · Eerste admin-account</h2>
             <p class="muted">Deze gebruiker krijgt rol <code>architect</code> (volledige rechten).</p>
             <label>Naam <input name="name" required maxlength="150"></label>
