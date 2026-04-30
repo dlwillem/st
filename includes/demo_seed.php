@@ -512,13 +512,13 @@ function _demo_import_scoring(Spreadsheet $ss, string $now): array {
     // Antwoord-mapping (Excel → DB enum)
     $choiceMap = ['Ja' => 'volledig', 'Deels' => 'deels', 'Nee' => 'niet'];
 
-    $nAntw = 0; $nScores = 0; $nDemoScores = 0; $nDemoOpen = 0;
+    $nAntw = 0; $nScores = 0; $nDemoScores = 0; $nDemoOpen = 0; $nDeelnemers = 0;
 
     db_transaction(function () use (
         $levId, $trajId, $now,
         $reqByCode, $choiceMap,
         $antwoordRows, $beoordelaarsRows, $scoresRows, $demoScoresRows, $demoOpenRows,
-        &$nAntw, &$nScores, &$nDemoScores, &$nDemoOpen
+        &$nAntw, &$nScores, &$nDemoScores, &$nDemoOpen, &$nDeelnemers
     ) {
         // ── 1) Leverancier-antwoorden ────────────────────────────────────────
         // Cols: 0=Nr, 1=Scope, 2=Domein, 3=Titel, 4=MoSCoW, 5=Antwoord, 6=Toelichting
@@ -602,15 +602,53 @@ function _demo_import_scoring(Spreadsheet $ss, string $now): array {
         }
 
         // ── 3) Beoordelaars inlezen ──────────────────────────────────────────
-        // Cols: 0=Naam, 1=E-mail, 2=Rol, 3=Organisatie, 4=Opmerking
+        // Cols: 0=Naam, 1=E-mail, 2=Rol, 3=Organisatie, 4=Opmerking, 5=Scopes
         $beoordelaars = [];
         foreach ($beoordelaarsRows as $row) {
             $naam  = trim((string)($row[0] ?? ''));
             $email = trim((string)($row[1] ?? ''));
             if ($naam === '' || $email === '') continue;
-            $beoordelaars[] = ['name' => $naam, 'email' => $email];
+            $scopesRaw = trim((string)($row[5] ?? ''));
+            $beoScopes = $scopesRaw !== ''
+                ? array_values(array_filter(array_map('trim', explode(';', $scopesRaw))))
+                : [];
+            $beoordelaars[] = ['name' => $naam, 'email' => $email, 'scopes' => $beoScopes];
         }
         if (empty($beoordelaars)) return;
+
+        // ── 3b) Collega's (traject_deelnemers) aanmaken ──────────────────────
+        $tdIds = []; // beoordelaar-index → traject_deelnemer_id
+        foreach ($beoordelaars as $idx => $beo) {
+            $tdId = (int)(db_value(
+                'SELECT id FROM traject_deelnemers WHERE traject_id = :t AND email = :e',
+                [':t' => $trajId, ':e' => $beo['email']]
+            ) ?: 0);
+            if (!$tdId) {
+                $tdId = db_insert('traject_deelnemers', [
+                    'traject_id' => $trajId,
+                    'user_id'    => null,
+                    'name'       => $beo['name'],
+                    'email'      => $beo['email'],
+                    'created_at' => $now,
+                ]);
+                $nDeelnemers++;
+            }
+            $tdIds[$idx] = $tdId;
+
+            // Scope-toewijzingen
+            foreach ($beo['scopes'] as $s) {
+                $hasScope = db_value(
+                    'SELECT 1 FROM traject_deelnemer_scopes WHERE traject_deelnemer_id = :d AND scope = :s',
+                    [':d' => $tdId, ':s' => $s]
+                );
+                if (!$hasScope) {
+                    db_insert('traject_deelnemer_scopes', [
+                        'traject_deelnemer_id' => $tdId,
+                        'scope'                => $s,
+                    ]);
+                }
+            }
+        }
 
         // ── 4) Scoring-rondes per scope aanmaken ─────────────────────────────
         // Scores sheet cols: 0=Nr, 1=Scope, ..., 6-10=scores per beoordelaar (zelfde volgorde)
@@ -645,9 +683,10 @@ function _demo_import_scoring(Spreadsheet $ss, string $now): array {
             }
             $rondeIds[$scope] = $rondeId;
 
-            // Deelnemers aanmaken voor deze ronde
+            // Deelnemers aanmaken voor deze ronde (alleen beoordelaars met deze scope)
             $deelnemerIds[$scope] = [];
             foreach ($beoordelaars as $idx => $beo) {
+                if (!in_array($scope, $beo['scopes'], true)) continue;
                 $existing = db_value(
                     'SELECT id FROM scoring_deelnemers WHERE ronde_id = :r AND email = :e',
                     [':r' => $rondeId, ':e' => $beo['email']]
@@ -659,7 +698,7 @@ function _demo_import_scoring(Spreadsheet $ss, string $now): array {
                 $deelnemerIds[$scope][$idx] = db_insert('scoring_deelnemers', [
                     'ronde_id'             => $rondeId,
                     'leverancier_id'       => $levId,
-                    'traject_deelnemer_id' => null,
+                    'traject_deelnemer_id' => $tdIds[$idx] ?? null,
                     'name'                 => $beo['name'],
                     'email'                => $beo['email'],
                     'token'                => bin2hex(random_bytes(32)),
@@ -748,7 +787,7 @@ function _demo_import_scoring(Spreadsheet $ss, string $now): array {
             $demoDeelnemerIds[$idx] = db_insert('scoring_deelnemers', [
                 'ronde_id'             => $demoRondeId,
                 'leverancier_id'       => $levId,
-                'traject_deelnemer_id' => null,
+                'traject_deelnemer_id' => $tdIds[$idx] ?? null,
                 'name'                 => $beo['name'],
                 'email'                => $beo['email'],
                 'token'                => bin2hex(random_bytes(32)),
@@ -827,6 +866,7 @@ function _demo_import_scoring(Spreadsheet $ss, string $now): array {
 
     return [
         'antwoorden'  => $nAntw,
+        'deelnemers'  => $nDeelnemers,
         'rondes'      => 7,   // 6 scope + 1 DEMO
         'scores'      => $nScores,
         'demo_scores' => $nDemoScores,
