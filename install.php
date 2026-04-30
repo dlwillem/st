@@ -240,9 +240,9 @@ function wiz_handle_post(int $step): int {
             structure_import_xlsx($structPath);
         }
         if ($choice === 'seed_demo') {
-            $demoPath = APP_ROOT . '/data/seed/demo.xlsx';
+            $demoPath = APP_ROOT . '/data/seed/demo_compleet.xlsx';
             if (!is_file($demoPath)) {
-                throw new RuntimeException('Demo-Excel ontbreekt: data/seed/demo.xlsx.');
+                throw new RuntimeException('Demo-Excel ontbreekt: data/seed/demo_compleet.xlsx.');
             }
             require_once APP_ROOT . '/includes/demo_seed.php';
             demo_import_xlsx($demoPath);
@@ -349,7 +349,7 @@ function wiz_render(int $step): string {
             <?php break;
         case 3:
             $hasStruct = is_file(APP_ROOT . '/data/seed/structuur.xlsx');
-            $hasDemo   = is_file(APP_ROOT . '/data/seed/demo.xlsx');
+            $hasDemo   = is_file(APP_ROOT . '/data/seed/demo_compleet.xlsx');
             ?>
             <h2>3 · Seed-data</h2>
             <p class="muted">Kies waarmee de database wordt gevuld. Je kunt dit niet meer ongedaan maken zonder een wipe via Instellingen.</p>
@@ -372,9 +372,9 @@ function wiz_render(int $step): string {
             <label style="font-weight:normal;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;margin:8px 0;<?= ($hasStruct && $hasDemo) ? '' : 'opacity:.55;' ?>">
               <input type="radio" name="seed_choice" value="seed_demo" <?= ($hasStruct && $hasDemo) ? '' : 'disabled' ?> style="width:auto;margin-top:3px;">
               <span><strong>Seed-data + demo-data</strong><br>
-                <span class="muted small">Bovenstaande, plus voorbeeldtrajecten + leveranciers + requirements uit <code>data/seed/demo.xlsx</code>.</span>
+                <span class="muted small">Bovenstaande, plus voorbeeldtrajecten + leveranciers + requirements uit <code>data/seed/demo_compleet.xlsx</code>.</span>
                 <?php if (!$hasStruct): ?><br><span class="small" style="color:#991b1b;">Eerst <code>data/seed/structuur.xlsx</code> nodig.</span>
-                <?php elseif (!$hasDemo): ?><br><span class="small" style="color:#991b1b;">Bestand ontbreekt: <code>data/seed/demo.xlsx</code>.</span>
+                <?php elseif (!$hasDemo): ?><br><span class="small" style="color:#991b1b;">Bestand ontbreekt: <code>data/seed/demo_compleet.xlsx</code>.</span>
                 <?php endif; ?>
               </span>
             </label>
@@ -382,7 +382,7 @@ function wiz_render(int $step): string {
             <p class="muted small" style="margin-top:14px;">
               Een lege demo-template kun je nu downloaden om in te vullen voordat je deze stap voltooit:
               <a href="install.php?action=demo_template_download">demo-template.xlsx</a>.
-              Plaats 'm daarna als <code>data/seed/demo.xlsx</code> en herlaad deze pagina.
+              Plaats 'm daarna als <code>data/seed/demo_compleet.xlsx</code> en herlaad deze pagina.
             </p>
 
             <button class="btn">Volgende →</button>
